@@ -5,104 +5,106 @@ import google.generativeai as genai
 # --- 1. 頁面設定 ---
 st.set_page_config(page_title="AI Poker Copilot", page_icon="♠️", layout="wide")
 st.title("♠️ AI Poker Copilot")
-st.caption("Version 2.0 | 強力解碼版")
+st.caption("Version 4.0 | 模型切換版")
 
 # --- 2. 側邊欄 ---
 with st.sidebar:
     st.header("⚙️ 設定")
     api_key = st.text_input("輸入 Gemini API Key", type="password")
+    
+    # 🔥 新增功能：讓你自己選手機型號！
+    # 如果 Flash 報錯，就選 Pro，Pro 是最穩定的老大哥
+    model_name = st.selectbox(
+        "選擇 AI 模型", 
+        ["gemini-1.5-flash", "gemini-1.5-pro-latest", "gemini-pro"],
+        index=0,
+        help="如果 Flash 報錯，請切換到 gemini-pro 試試看"
+    )
+    
     st.markdown("[👉 點此獲取免費 Key](https://aistudio.google.com/app/apikey)")
     st.divider()
-    st.info("支援：GGPoker / PokerStars")
+    st.info(f"目前使用模型：{model_name}")
 
-# --- 3. 核心功能：超級讀檔器 ---
+# --- 3. 核心功能：讀檔器 ---
 def load_content(uploaded_file):
-    # 嘗試多種編碼格式，直到讀懂為止
     bytes_data = uploaded_file.getvalue()
-    encodings = ["utf-8", "utf-8-sig", "latin-1", "cp1252", "utf-16"]
-    
+    encodings = ["utf-8", "utf-16-le", "utf-16", "utf-8-sig", "latin-1", "cp1252"]
     for enc in encodings:
         try:
-            return bytes_data.decode(enc)
+            decoded = bytes_data.decode(enc)
+            if "Hand" in decoded or "Tournament" in decoded or "Poker" in decoded:
+                return decoded
         except UnicodeDecodeError:
             continue
     return None
 
 def parse_hands(content):
     if not content: return []
-    
-    # 針對 GG 可能的格式差異做正規化
-    # 有些檔案是用 "Poker Hand #" 有些前面會有空白
-    hands = re.split(r"Poker Hand #", content)
-    
+    # 寬容模式切割
+    raw_hands = re.split(r"(Poker Hand #|Hand #)", content)
     parsed = []
-    for h in hands:
-        if not h.strip(): continue
-        
-        # 排除太短的雜訊
-        if len(h) < 50: continue
-
-        # 抓 ID
-        hid_match = re.search(r"TM(\d+):", h) or re.search(r"#(\d+):", h)
-        hid = hid_match.group(1) if hid_match else "Unknown"
-        
-        # 抓 Hero 牌
-        hero_match = re.search(r"Dealt to Hero \[(.*?)\]", h)
-        cards = hero_match.group(1) if hero_match else "N/A"
-        
-        # 抓結果
-        res = "😐 平局/存活"
-        if "Hero showed" in h and "lost" in h: res = "❌ 輸掉底池"
-        elif "Hero collected" in h or "Hero won" in h: res = "💰 贏得底池"
-        elif "Hero folded" in h: res = "🛡️ 棄牌"
-        
-        parsed.append({
-            "id": hid, 
-            "cards": cards, 
-            "result": res, 
-            "raw": "Poker Hand #" + h
-        })
+    current_hand = ""
+    for part in raw_hands:
+        if "Hand #" in part:
+            if current_hand: process_single_hand(current_hand, parsed)
+            current_hand = part
+        else:
+            current_hand += part
+    if current_hand: process_single_hand(current_hand, parsed)
     return parsed
 
+def process_single_hand(h, parsed_list):
+    if len(h) < 50: return
+    hid_match = re.search(r"TM(\d+):", h) or re.search(r"#(\d+):", h)
+    hid = hid_match.group(1) if hid_match else "Unknown"
+    hero_match = re.search(r"Dealt to Hero \[(.*?)\]", h)
+    cards = hero_match.group(1) if hero_match else "N/A"
+    res = "😐 平局/存活"
+    if "Hero showed" in h and "lost" in h: res = "❌ 輸掉底池"
+    elif "Hero collected" in h or "Hero won" in h: res = "💰 贏得底池"
+    elif "Hero folded" in h: res = "🛡️ 棄牌"
+    parsed_list.append({"id": hid, "cards": cards, "result": res, "raw": h})
+
 # --- 4. AI 分析模組 ---
-def analyze_with_gemini(hand_text, api_key):
+def analyze_with_gemini(hand_text, api_key, model_name):
     if not api_key: return "⚠️ 請先輸入 API Key"
     try:
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-1.5-flash')
-        prompt = f"你是德州撲克教練。請繁體中文分析這手牌，指出 Hero 錯誤：\n{hand_text}"
+        # 這裡會使用你在側邊欄選的模型
+        model = genai.GenerativeModel(model_name)
+        
+        prompt = f"""
+        你是一個德州撲克教練。請繁體中文分析這手牌，指出 Hero 錯誤：
+        (請注意：如果是 gemini-pro 模型，可能會比較簡短)
+        \n{hand_text}
+        """
         response = model.generate_content(prompt)
         return response.text
     except Exception as e:
-        return f"❌ 分析失敗: {str(e)}"
+        return f"❌ 分析失敗 ({model_name}): {str(e)}"
 
 # --- 5. 主介面 ---
 uploaded_file = st.file_uploader("📂 請上傳手牌紀錄 (.txt)", type=["txt"])
 
 if uploaded_file is not None:
     content = load_content(uploaded_file)
-    
-    if content is None:
-        st.error("❌ 檔案編碼無法識別，請嘗試將檔案另存為 UTF-8 格式。")
-    else:
+    if content:
         hands_data = parse_hands(content)
-        
-        if len(hands_data) == 0:
-            st.error("⚠️ 讀取失敗：檔案內找不到 'Poker Hand #' 關鍵字。")
-            with st.expander("🐞 點此查看檔案前 500 字內容 (Debug)"):
-                st.text(content[:500])
-        else:
+        if hands_data:
             st.success(f"✅ 成功讀取 {len(hands_data)} 手牌！")
-            
-            # 選單與分析
             col1, col2 = st.columns([1, 2])
             with col1:
                 options = [f"#{h['id']} | {h['cards']} | {h['result']}" for h in hands_data]
-                sel = st.radio("手牌列表", options)
-                sel_hand = hands_data[options.index(sel)]
-            
+                if options:
+                    sel = st.radio("手牌列表", options)
+                    sel_hand = hands_data[options.index(sel)]
             with col2:
-                if st.button("🔥 AI 分析"):
-                    st.markdown(analyze_with_gemini(sel_hand['raw'], api_key))
-                with st.expander("原始紀錄"):
-                    st.code(sel_hand['raw'])
+                # 把模型名稱傳進去
+                if options and st.button("🔥 AI 分析"):
+                    with st.spinner(f"正在使用 {model_name} 分析中..."):
+                        st.markdown(analyze_with_gemini(sel_hand['raw'], api_key, model_name))
+                if options:
+                    with st.expander("原始紀錄"):
+                        st.code(sel_hand['raw'])
+    else:
+        st.error("檔案讀取失敗")
