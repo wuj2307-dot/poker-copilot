@@ -6,25 +6,49 @@ import json
 # --- 1. 頁面設定 ---
 st.set_page_config(page_title="AI Poker Copilot", page_icon="♠️", layout="wide")
 st.title("♠️ AI Poker Copilot")
-st.caption("Version 5.1 | 修復語法版")
+st.caption("Version 7.0 | 自我診斷版 (Auto-Detect Models)")
 
 # --- 2. 側邊欄 ---
 with st.sidebar:
     st.header("⚙️ 設定")
     api_key = st.text_input("輸入 Gemini API Key", type="password")
     
-    # 選擇模型 (直接對接 Google API，無依賴)
-    model_option = st.selectbox(
-        "選擇模型", 
-        ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-pro"],
-        index=0
-    )
+    # 🔥 V7.0 核心升級：自動抓取可用模型
+    selected_model = "gemini-1.5-flash" # 預設值
+    
+    if api_key:
+        try:
+            # 問 Google: 這把鑰匙能用什麼模型？
+            url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
+            response = requests.get(url)
+            
+            if response.status_code == 200:
+                data = response.json()
+                # 過濾出支援 "generateContent" (生成文字) 的模型
+                available_models = []
+                for m in data.get('models', []):
+                    if 'generateContent' in m.get('supportedGenerationMethods', []):
+                        # 只留名字，去掉 models/ 前綴
+                        name = m['name'].replace('models/', '')
+                        available_models.append(name)
+                
+                # 排序一下，把 flash 放前面
+                available_models.sort(reverse=True)
+                
+                if available_models:
+                    st.success(f"✅ 成功連線！找到 {len(available_models)} 個可用模型")
+                    selected_model = st.selectbox("請選擇模型 (建議選 1.5-flash)", available_models, index=0)
+                else:
+                    st.warning("⚠️ 連線成功但沒找到支援的模型")
+            else:
+                st.error(f"❌ 無法獲取模型清單 (Code {response.status_code})")
+        except Exception as e:
+            st.error(f"連線錯誤: {e}")
     
     st.markdown("[👉 點此獲取免費 Key](https://aistudio.google.com/app/apikey)")
     st.divider()
-    st.info(f"當前連線模型：{model_option}")
 
-# --- 3. 核心功能：讀檔器 ---
+# --- 3. 讀檔功能 ---
 def load_content(uploaded_file):
     bytes_data = uploaded_file.getvalue()
     encodings = ["utf-8", "utf-16-le", "utf-16", "utf-8-sig", "latin-1", "cp1252"]
@@ -39,7 +63,6 @@ def load_content(uploaded_file):
 
 def parse_hands(content):
     if not content: return []
-    # 寬容切割
     raw_hands = re.split(r"(Poker Hand #|Hand #)", content)
     parsed = []
     current_hand = ""
@@ -62,10 +85,9 @@ def process_single_hand(h, parsed_list):
     if "Hero showed" in h and "lost" in h: res = "❌ 輸掉底池"
     elif "Hero collected" in h or "Hero won" in h: res = "💰 贏得底池"
     elif "Hero folded" in h: res = "🛡️ 棄牌"
-    
     parsed_list.append({"id": hid, "cards": cards, "result": res, "raw": h})
 
-# --- 4. AI 分析模組 (Direct API) ---
+# --- 4. AI 分析 (使用動態選擇的模型) ---
 def analyze_with_direct_api(hand_text, api_key, model_name):
     if not api_key: return "⚠️ 請先輸入 API Key"
     
@@ -109,8 +131,8 @@ if uploaded_file is not None:
                     sel_hand = hands_data[options.index(sel)]
             with col2:
                 if options and st.button("🔥 AI 分析"):
-                    with st.spinner(f"正在連線 Google {model_option}..."):
-                        st.markdown(analyze_with_direct_api(sel_hand['raw'], api_key, model_option))
+                    with st.spinner(f"正在連線 {selected_model}..."):
+                        st.markdown(analyze_with_direct_api(sel_hand['raw'], api_key, selected_model))
                 if options:
                     with st.expander("原始紀錄"):
                         st.code(sel_hand['raw'])
