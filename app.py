@@ -6,14 +6,14 @@ import json
 # --- 1. 頁面設定 ---
 st.set_page_config(page_title="AI Poker Copilot", page_icon="♠️", layout="wide")
 st.title("♠️ AI Poker Copilot")
-st.caption("Version 5.0 | 特種部隊版 (Direct API)")
+st.caption("Version 5.1 | 修復語法版")
 
 # --- 2. 側邊欄 ---
 with st.sidebar:
     st.header("⚙️ 設定")
     api_key = st.text_input("輸入 Gemini API Key", type="password")
     
-    # 這裡我們直接對接 Google 的網址，不透過中間人
+    # 選擇模型 (直接對接 Google API，無依賴)
     model_option = st.selectbox(
         "選擇模型", 
         ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-pro"],
@@ -27,12 +27,10 @@ with st.sidebar:
 # --- 3. 核心功能：讀檔器 ---
 def load_content(uploaded_file):
     bytes_data = uploaded_file.getvalue()
-    # 窮舉解碼法
     encodings = ["utf-8", "utf-16-le", "utf-16", "utf-8-sig", "latin-1", "cp1252"]
     for enc in encodings:
         try:
             decoded = bytes_data.decode(enc)
-            # 只要解出來像英文或撲克紀錄就回傳
             if "Hand" in decoded or "Tournament" in decoded or "Poker" in decoded or "Dealt" in decoded:
                 return decoded
         except UnicodeDecodeError:
@@ -67,43 +65,30 @@ def process_single_hand(h, parsed_list):
     
     parsed_list.append({"id": hid, "cards": cards, "result": res, "raw": h})
 
-# --- 4. AI 分析模組 (直接呼叫 REST API) ---
+# --- 4. AI 分析模組 (Direct API) ---
 def analyze_with_direct_api(hand_text, api_key, model_name):
     if not api_key: return "⚠️ 請先輸入 API Key"
     
-    # 這是 Google Gemini 的官方 API 網址
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
     
-    # 設定給 AI 的提示詞
     prompt_text = f"""
     你是一個德州撲克教練。請繁體中文分析這手牌，指出 Hero 錯誤：
     \n{hand_text}
     """
     
-    # 建構請求封包 (JSON)
-    payload = {
-        "contents": [{
-            "parts": [{"text": prompt_text}]
-        }]
-    }
-    
+    payload = {"contents": [{"parts": [{"text": prompt_text}]}]}
     headers = {'Content-Type': 'application/json'}
     
     try:
-        # 直接發射！不經過任何 Python 套件
         response = requests.post(url, headers=headers, data=json.dumps(payload))
-        
-        # 檢查結果
         if response.status_code == 200:
             result = response.json()
-            # 解析 Google 回傳的複雜 JSON
             try:
                 return result['candidates'][0]['content']['parts'][0]['text']
-            except (KeyError, IndexError):
-                return f"⚠️ AI 回傳了無法理解的格式: {result}"
+            except:
+                return f"⚠️ AI 回傳格式異常: {result}"
         else:
             return f"❌ API 請求失敗 (Code {response.status_code}): {response.text}"
-            
     except Exception as e:
         return f"❌ 連線錯誤: {str(e)}"
 
@@ -125,10 +110,9 @@ if uploaded_file is not None:
             with col2:
                 if options and st.button("🔥 AI 分析"):
                     with st.spinner(f"正在連線 Google {model_option}..."):
-                        # 改用新的 direct api 函數
                         st.markdown(analyze_with_direct_api(sel_hand['raw'], api_key, model_option))
                 if options:
                     with st.expander("原始紀錄"):
                         st.code(sel_hand['raw'])
     else:
-        st.error("❌ 檔案讀取失敗，編碼無法
+        st.error("❌ 檔案讀取失敗，編碼無法識別。")
