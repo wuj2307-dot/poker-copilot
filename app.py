@@ -2,52 +2,58 @@ import streamlit as st
 import re
 import requests
 import json
-import pandas as pd # 引入 Pandas 做數據統計
+import pandas as pd
 
-# --- 1. 頁面設定 (Dark Mode & Wide Layout) ---
+# --- 1. 頁面設定 (開啟寬螢幕模式) ---
 st.set_page_config(page_title="Poker Copilot Pro", page_icon="♠️", layout="wide")
 
-# 自定義 CSS 讓介面更像 App
+# 自定義 CSS：讓介面更有質感，卡片化設計
 st.markdown("""
 <style>
-    .stApp { background-color: #0e1117; color: #fafafa; }
-    .card-text { font-size: 1.2rem; font-weight: bold; font-family: monospace; }
-    .stat-box { border: 1px solid #333; padding: 10px; border-radius: 5px; text-align: center; }
-    .highlight-red { color: #ff4b4b; font-weight: bold; }
-    .highlight-green { color: #00cc00; font-weight: bold; }
+    /* 調整一下字體與間距 */
+    .block-container { padding-top: 2rem; }
+    
+    /* 數據卡片的樣式 */
+    div[data-testid="stMetric"] {
+        background-color: #262730;
+        border: 1px solid #464b5c;
+        padding: 15px;
+        border-radius: 10px;
+        color: white;
+    }
+    
+    /* 讓 Emoji 牌大一點 */
+    .poker-card { font-size: 1.5rem; }
 </style>
 """, unsafe_allow_html=True)
 
 st.title("♠️ Poker Copilot Pro")
 st.caption("Version 9.0 | 儀表板進化版 (秒開統計 + 視覺化)")
 
-# --- 2. 側邊欄 ---
+# --- 2. 側邊欄：設定與模型 ---
 with st.sidebar:
     st.header("⚙️ 控制台")
     api_key = st.text_input("Gemini API Key", type="password")
     
-    # 自動抓取模型
-    selected_model = "gemini-1.5-flash" 
+    # 自動偵測模型 (沿用之前的邏輯)
+    selected_model = "gemini-1.5-flash"
     if api_key:
         try:
             url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
             response = requests.get(url)
             if response.status_code == 200:
                 data = response.json()
-                available_models = []
-                for m in data.get('models', []):
-                    name = m['name'].replace('models/', '')
-                    if 'generateContent' in m.get('supportedGenerationMethods', []):
-                        available_models.append(name)
-                # 優先找 flash
-                available_models.sort(key=lambda x: 'flash' not in x)
-                if available_models:
-                    selected_model = st.selectbox("AI 模型", available_models, index=0)
-        except:
-            pass
+                models = [m['name'].replace('models/', '') for m in data.get('models', []) if 'generateContent' in m.get('supportedGenerationMethods', [])]
+                # 簡單排序：Flash 優先
+                models.sort(key=lambda x: 'flash' not in x)
+                if models:
+                    selected_model = st.selectbox("AI 引擎", models, index=0)
+                    st.success("✅ 引擎就緒")
+        except: pass
             
     st.divider()
-    st.info("💡 提示：上傳後會自動計算 VPIP 等數據，點擊單手牌可進行 AI 深度復盤。")
+    st.markdown("### 📝 使用說明")
+    st.info("1. 上傳紀錄檔\n2. 系統自動計算 VPIP\n3. 點擊單手牌進行 AI 復盤")
 
 # --- 3. 核心功能：讀檔與解析 ---
 def load_content(uploaded_file):
@@ -84,114 +90,157 @@ def process_single_hand(h, parsed_list):
     hero_cards = re.search(r"Dealt to Hero \[(.*?)\]", h)
     cards = hero_cards.group(1) if hero_cards else None
     
-    # 抓 VPIP 關鍵字 (是否有主動下注/跟注)
+    # 簡單計算 VPIP/PFR (基本關鍵字偵測)
     is_vpip = False
     if "Hero: raises" in h or "Hero: calls" in h or "Hero: bets" in h:
         is_vpip = True
     
-    # 抓 PFR 關鍵字 (是否有加注)
     is_pfr = False
-    if "Hero: raises" in h or "Hero: bets" in h: # 簡化邏輯
+    if "Hero: raises" in h or "Hero: bets" in h:
         is_pfr = True
         
-    # 抓輸贏
+    # 抓輸贏結果
     res = "😐"
-    if "Hero showed" in h and "lost" in h: res = "❌ 輸"
-    elif "Hero collected" in h or "Hero won" in h: res = "💰 贏"
-    elif "Hero folded" in h: res = "🛡️ 棄"
+    if "Hero showed" in h and "lost" in h: res = "❌"
+    elif "Hero collected" in h or "Hero won" in h: res = "💰"
+    elif "Hero folded" in h: res = "🛡️"
     
-    if cards: # 只保留有玩的手牌
+    if cards: # 只保留 Hero 有拿到底牌的手牌
         parsed_list.append({
             "id": hid, "cards": cards, "result": res, 
             "is_vpip": is_vpip, "is_pfr": is_pfr, "raw": h
         })
 
-# 🂡 視覺化小工具：把文字牌轉 Emoji
+# 🂡 視覺化魔法：把文字變成 Emoji 牌
 def cards_to_emoji(card_str):
     if not card_str: return ""
-    suits = {'s': '♠️', 'h': '♥️', 'd': '♦️', 'c': '♣️'}
-    # 簡單轉換，例如 As -> A♠️
+    # 定義撲克符號
+    suits_map = {'s': '♠️', 'h': '♥️', 'd': '♦️', 'c': '♣️'}
     formatted = []
+    
+    # 處理像 "Ah Ks" 這樣的字串
     for card in card_str.split():
-        if len(card) == 2:
-            rank = card[0]
-            suit = card[1]
-            color = "red" if suit in ['h', 'd'] else "black" # Streamlit markdown 支援有限，先用 Emoji
-            formatted.append(f"{rank}{suits.get(suit, suit)}")
-        else:
-            formatted.append(card)
+        if len(card) >= 2:
+            rank = card[:-1] # 處理 10, J, Q, K, A
+            suit = card[-1]  # 處理 s, h, d, c
+            # 組合
+            display = f"{rank}{suits_map.get(suit, suit)}"
+            formatted.append(display)
+            
     return " ".join(formatted)
 
-# --- 4. AI 分析 ---
+# --- 4. AI 分析函數 (單點觸發) ---
 def analyze_hand_ai(hand_text, api_key, model):
-    if not api_key: return "⚠️ 請輸入 API Key"
+    if not api_key: return "⚠️ 請先在側邊欄輸入 API Key"
+    
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+    
     prompt = f"""
     你是一個德州撲克教練。請用繁體中文分析這手牌。
+    風格：直接、犀利、數據導向。
     
-    【格式要求】
-    1. 🎯 **核心評價**：一句話講評 (例如：標準的 Cooler / 這裡打太鬆了)。
-    2. 🧠 **決策分析**：指出 Hero 在 翻牌前/翻牌後 的關鍵決策是否正確。
-    3. 💡 **改進建議**：如果不對，該怎麼打？
+    【輸出格式】
+    ### 🎯 核心評價
+    (一句話總結，例如：標準跑馬 / 這裡太鬆了 / 打得很好)
+    
+    ### 🧠 關鍵決策點
+    * **翻牌前 (Pre-flop):** ...
+    * **翻牌後 (Post-flop):** ...
+    
+    ### 💡 教練建議
+    (如果有錯，下次該怎麼打？)
     
     手牌紀錄：
     {hand_text}
     """
+    
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
+    headers = {'Content-Type': 'application/json'}
+    
     try:
-        resp = requests.post(url, headers={'Content-Type': 'application/json'}, data=json.dumps(payload))
+        resp = requests.post(url, headers=headers, data=json.dumps(payload))
         if resp.status_code == 200:
             return resp.json()['candidates'][0]['content']['parts'][0]['text']
-        return f"Error: {resp.text}"
-    except Exception as e: return str(e)
+        else:
+            return f"❌ 請求失敗: {resp.text}"
+    except Exception as e: return f"連線錯誤: {str(e)}"
 
 # --- 5. 主介面邏輯 ---
-uploaded_file = st.file_uploader("📂 上傳比賽紀錄 (.txt)", type=["txt"])
+uploaded_file = st.file_uploader("📂 請上傳手牌紀錄 (.txt)", type=["txt"])
 
 if uploaded_file:
     content = load_content(uploaded_file)
     if content:
         hands = parse_hands(content)
         if hands:
-            # 📊 Step 1: 瞬間顯示全局統計 (Dashboard)
+            # 轉換成 Pandas DataFrame 方便算數據
             df = pd.DataFrame(hands)
             total_hands = len(df)
-            vpip = df['is_vpip'].sum() / total_hands * 100
-            pfr = df['is_pfr'].sum() / total_hands * 100
             
-            st.markdown("### 📊 比賽數據總覽")
+            # 計算數據
+            vpip_count = df['is_vpip'].sum()
+            pfr_count = df['is_pfr'].sum()
+            
+            vpip = (vpip_count / total_hands) * 100
+            pfr = (pfr_count / total_hands) * 100
+            
+            # --- 儀表板區域 ---
+            st.markdown("### 📊 賽局數據儀表板")
             c1, c2, c3, c4 = st.columns(4)
-            c1.metric("總手牌數", total_hands)
-            c1.metric("入池率 (VPIP)", f"{vpip:.1f}%", delta="標準 20-25%" if 20<=vpip<=25 else "偏離")
-            c2.metric("加注率 (PFR)", f"{pfr:.1f}%")
-            c3.metric("激進指數", "計算中...") # 預留
+            
+            c1.metric("總手牌", total_hands)
+            
+            # 用顏色標示是否健康 (VPIP 20-30 為健康)
+            vpip_delta = "健康" if 20 <= vpip <= 30 else "偏離"
+            vpip_color = "normal" if 20 <= vpip <= 30 else "inverse"
+            c2.metric("入池率 (VPIP)", f"{vpip:.1f}%", delta=vpip_delta, delta_color=vpip_color)
+            
+            c3.metric("加注率 (PFR)", f"{pfr:.1f}%", f"Gap: {vpip-pfr:.1f}%")
+            
+            # 簡單勝率 (如果有贏到底池的)
+            win_count = len(df[df['result'] == '💰'])
+            c4.metric("獲勝手牌數", win_count)
             
             st.divider()
             
-            # 🖐️ Step 2: 左右分欄介面
+            # --- 左右分欄操作區 ---
             col_list, col_analysis = st.columns([1, 2])
             
             with col_list:
                 st.subheader("📜 手牌歷程")
-                # 製作漂亮的選單字串
-                options = [f"{h['result']} {cards_to_emoji(h['cards'])} (#{h['id'][-4:]})" for h in hands]
-                selected_idx = st.radio("選擇手牌", range(len(hands)), format_func=lambda x: options[x])
+                # 製作選單： 💰 A♠️ K♥️ (#1234)
+                # 使用 DataFrame 的 apply 快速處理
+                display_options = df.apply(
+                    lambda x: f"{x['result']} {cards_to_emoji(x['cards'])} (#{str(x['id'])[-4:]})", 
+                    axis=1
+                ).tolist()
+                
+                # 選單
+                selected_idx = st.radio(
+                    "點擊檢視詳細復盤：", 
+                    range(len(hands)), 
+                    format_func=lambda x: display_options[x],
+                    label_visibility="collapsed"
+                )
                 
             with col_analysis:
                 hand = hands[selected_idx]
-                st.subheader(f"🕵️ 手牌分析 {cards_to_emoji(hand['cards'])}")
                 
-                # 顯示牌局預覽
-                with st.expander("查看原始紀錄", expanded=False):
-                    st.code(hand['raw'])
+                # 標題區：顯示大大的牌
+                st.markdown(f"## {hand['result']} 手牌 #{hand['id']}")
+                st.markdown(f"<div class='poker-card'>{cards_to_emoji(hand['cards'])}</div>", unsafe_allow_html=True)
                 
-                # AI 分析按鈕 (按需呼叫，解決速度問題)
-                if st.button("🔥 AI 教練，幫我復盤這手牌！", type="primary"):
-                    with st.spinner("AI 正在思考中..."):
+                # AI 分析區
+                st.markdown("---")
+                
+                # 這裡設計成：先顯示按鈕，點了才跑 AI，避免卡頓
+                if st.button("🔥 呼叫 AI 教練分析這手牌", type="primary", use_container_width=True):
+                    with st.spinner("AI 教練正在看牌..."):
                         analysis = analyze_hand_ai(hand['raw'], api_key, selected_model)
                         st.markdown(analysis)
-                else:
-                    st.info("👈 點擊左側列表選擇一手牌，然後按上方按鈕開始分析。")
+                
+                with st.expander("查看原始文字紀錄 (Raw Data)"):
+                    st.code(hand['raw'])
 
     else:
-        st.error("無法讀取檔案")
+        st.error("❌ 檔案無法讀取，請確認格式。")
