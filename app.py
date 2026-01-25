@@ -113,15 +113,66 @@ def cards_to_emoji(card_str):
             formatted.append(f"{card[:-1]}{suits_map.get(card[-1], card[-1])}")
     return " ".join(formatted)
 
-# --- 4. AI 功能 ---
+# --- 4. AI 功能 (V12.0 精準提示優化版) ---
 def analyze_hand_ai(hand_text, api_key, model):
     if not api_key: return "⚠️ 請先解鎖"
+    
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
-    prompt = f"你是一個德州撲克教練。請用繁體中文，犀利地點評這手牌 Hero 的決策：\n{hand_text}"
+    
+    # 🔥 V12.0 關鍵修改：植入「撲克規則庫」與「花色字典」
+    prompt = f"""
+    你是一個世界級的德州撲克教練。請分析這手牌。
+    
+    【⚠️ 嚴格資料解讀規則 - 必須遵守】
+    1. **花色代碼對照**：
+       - 'h' = ♥️ 紅心 (Hearts)
+       - 's' = ♠️ 黑桃 (Spades)
+       - 'd' = ♦️ 方塊 (Diamonds)
+       - 'c' = ♣️ 梅花 (Clubs)
+       - 請絕對不要看錯花色。
+       
+    2. **牌型定義 (Hand Rankings)**：
+       - **Top Pair (頂對)**：你的底牌之一 **對到了** 牌面上最大的那張牌。(例如：手牌 T9，牌面 T-5-2)。
+       - **Overcards (高張)**：你的底牌比牌面都大，但 **沒有對到**。(例如：手牌 AT，牌面 9-8-2)。這叫 "Ace High"，**不是** Top Pair。
+       - **Draws (聽牌)**：
+         - Flush Draw (同花聽牌)：你有 4 張同花色。
+         - OESD (兩頭順)：差一張成順子。
+
+    【分析任務】
+    請一步步思考 (Chain of Thought)：
+    1. 先在心中確認 Hero 的確切底牌與花色。
+    2. 確認翻牌/轉牌的結構。
+    3. 準確判斷 Hero 目前的牌力 (是成牌還是聽牌？)。
+    4. 用繁體中文輸出犀利的決策分析。
+
+    【輸出格式】
+    ### 🃏 手牌與牌面
+    Hero: [你的解讀] (例如：♥️A ♥️T)
+    Board: [你的解讀]
+    目前牌力：(例如：高牌 A-High + 堅果同花聽牌 + 兩頭順聽牌)
+
+    ### 🎯 核心評價
+    (一句話總結)
+
+    ### 🧠 決策分析
+    (針對翻牌前、翻牌後的操作進行點評)
+
+    ### 💡 改進建議
+    (如有錯誤，該怎麼打)
+
+    手牌紀錄：
+    {hand_text}
+    """
+    
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
+    headers = {'Content-Type': 'application/json'}
+    
     try:
-        resp = requests.post(url, headers={'Content-Type': 'application/json'}, data=json.dumps(payload))
-        return resp.json()['candidates'][0]['content']['parts'][0]['text'] if resp.status_code == 200 else f"Error: {resp.text}"
+        resp = requests.post(url, headers=headers, data=json.dumps(payload))
+        if resp.status_code == 200:
+            return resp.json()['candidates'][0]['content']['parts'][0]['text']
+        else:
+            return f"Error: {resp.text}"
     except Exception as e: return str(e)
 
 def generate_match_summary(hands_data, vpip, pfr, api_key, model):
