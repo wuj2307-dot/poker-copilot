@@ -170,7 +170,16 @@ def generate_match_summary(hands_data, vpip, pfr, api_key, model):
     【關鍵手牌樣本】{key_hands_text}
     請給出一份【賽事深度診斷報告】(繁體中文)：1.風格畫像 2.關鍵漏洞 3.運氣成分 4.總結建議。
     """
-    payload = {"contents": [{"parts": [{"text": prompt}]}]}
+    # 這裡加入了 safetySettings (安全通行證)，強制關閉敏感過濾
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "safetySettings": [
+            {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"}
+        ]
+    }
     try:
         resp = requests.post(url, headers={'Content-Type': 'application/json'}, data=json.dumps(payload))
         return resp.json()['candidates'][0]['content']['parts'][0]['text'] if resp.status_code == 200 else f"Error: {resp.text}"
