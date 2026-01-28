@@ -7,14 +7,6 @@ import json
 st.set_page_config(page_title="Poker Copilot War Room", page_icon="♠️", layout="wide")
 
 # CSS 優化
-st.markdown("""
-<style>
-    .block-container { padding-top: 2rem; }
-    div[data-testid="stMetric"] { background-color: #1e212b; border: 1px solid #333; padding: 10px; border-radius: 8px; }
-    .poker-card { font-size: 1.8rem; font-weight: bold; }
-    .big-summary { background-color: #2b2d3e; padding: 20px; border-radius: 10px; border-left: 5px solid #ff4b4b; }
-</style>
-""", unsafe_allow_html=True)
 
 st.title("♠️ Poker Copilot: Alpha")
 st.caption("內部測試版 | 請輸入通關密碼")
