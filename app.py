@@ -34,15 +34,8 @@ with st.sidebar:
         st.header("⚙️ 設定")
         # 自動偵測模型 (沿用舊邏輯)
         selected_model = "gemini-1.5-flash"
-        try:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
-            response = requests.get(url)
-            if response.status_code == 200:
-                data = response.json()
-                models = [m['name'].replace('models/', '') for m in data.get('models', []) if 'generateContent' in m.get('supportedGenerationMethods', [])]
-                models.sort(key=lambda x: 'flash' not in x)
-                if models: selected_model = st.selectbox("AI 引擎", models, index=0)
-        except: pass
+        # 手動指定，不准它亂跑
+selected_model = st.selectbox("AI 引擎", ["gemini-1.5-flash", "gemini-1.5-pro"])
         
         st.header("🔍 篩選")
         filter_vpip = st.checkbox("只顯示有玩 (VPIP)", value=False)
