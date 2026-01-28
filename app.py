@@ -32,11 +32,9 @@ with st.sidebar:
     
     if api_key:
         st.header("⚙️ 設定")
-        # 自動偵測模型 (沿用舊邏輯)
-        selected_model = "gemini-1.5-flash"
-        # 手動指定，不准它亂跑
-        # 把 2.5 加回來，順便加個 2.0 實驗版
-        selected_model = st.selectbox("AI 引擎", ["gemini-2.0-flash-exp", "gemini-2.5-flash", "gemini-1.5-flash"])
+    
+        # 只保留唯一能通的 "gemini-2.5-flash"，把其他會報錯的都刪掉
+        selected_model = st.selectbox("AI 引擎", ["gemini-2.5-flash"])
         
         st.header("🔍 篩選")
         filter_vpip = st.checkbox("只顯示有玩 (VPIP)", value=False)
