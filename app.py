@@ -35,7 +35,8 @@ with st.sidebar:
         # 自動偵測模型 (沿用舊邏輯)
         selected_model = "gemini-1.5-flash"
         # 手動指定，不准它亂跑
-        selected_model = st.selectbox("AI 引擎", ["gemini-1.5-flash", "gemini-1.5-pro"])
+        # 我們把所有可能的叫法都列出來，總有一個會中！
+        selected_model = st.selectbox("AI 引擎", ["gemini-1.5-flash-001", "gemini-1.5-flash", "gemini-1.5-pro-latest"])
         
         st.header("🔍 篩選")
         filter_vpip = st.checkbox("只顯示有玩 (VPIP)", value=False)
