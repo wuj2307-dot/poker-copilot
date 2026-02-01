@@ -212,6 +212,9 @@ else:
         if content:
             # 呼叫解析函數
             hands, hero_name = parse_hands(content)
+
+            # 👇 這裡是你手動加入的，讓手牌從 Hand #1 開始顯示
+            hands.reverse()
             
             if not hands:
                 st.error("❌ 無法解析手牌，請確認格式。")
