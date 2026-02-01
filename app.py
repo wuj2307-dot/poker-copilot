@@ -80,6 +80,32 @@ def load_content(uploaded_file):
         return uploaded_file.getvalue().decode("utf-8")
     return None
 
+def cards_to_emoji(cards_str):
+    """
+    將撲克牌字串轉換為 Emoji 格式
+    例如: "Ah Ks" -> "A♥️ K♠️"
+    """
+    if not cards_str:
+        return "Unknown"
+    
+    suit_map = {
+        'h': '♥️',  # Hearts 紅心
+        'd': '♦️',  # Diamonds 方塊
+        'c': '♣️',  # Clubs 梅花
+        's': '♠️'   # Spades 黑桃
+    }
+    
+    cards = cards_str.split()
+    emoji_cards = []
+    
+    for card in cards:
+        if len(card) >= 2:
+            rank = card[:-1]  # 牌面 (A, K, Q, J, T, 9, 8...)
+            suit = card[-1].lower()  # 花色 (h, d, c, s)
+            emoji_cards.append(f"{rank}{suit_map.get(suit, suit)}")
+    
+    return " ".join(emoji_cards)
+
 def parse_hands(content):
     """
     專為 GGPoker 格式設計的手牌解析器
@@ -104,11 +130,12 @@ def parse_hands(content):
         bb_size_match = re.search(r"Level\d+\([\d,]+/([\d,]+)\)", full_hand_text)
         bb_size = int(bb_size_match.group(1).replace(",", "")) if bb_size_match else 1
         
-        # 3. 抓取 Hero 名字
+        # 3. 抓取 Hero 名字與手牌
         # GGPoker 格式：只有 Hero 會有 "Dealt to <Name> [牌]"，其他玩家是 "Dealt to <Name>" (無牌或空)
         # 關鍵：找有實際手牌的那行 (中括號內有內容)
-        hero_match = re.search(r"Dealt to (\S+) \[[A-Za-z0-9]{2} [A-Za-z0-9]{2}\]", full_hand_text)
+        hero_match = re.search(r"Dealt to (\S+) \[([A-Za-z0-9]{2} [A-Za-z0-9]{2})\]", full_hand_text)
         current_hero = hero_match.group(1) if hero_match else None
+        hero_cards = hero_match.group(2) if hero_match else None
         
         if current_hero and detected_hero is None:
             detected_hero = current_hero
@@ -147,7 +174,8 @@ def parse_hands(content):
             "vpip": is_vpip,
             "pfr": is_pfr,
             "bb": bb_count,
-            "hero": current_hero
+            "hero": current_hero,
+            "hero_cards": hero_cards
         })
     
     return parsed_hands, detected_hero
@@ -218,24 +246,34 @@ else:
                             st.markdown(advice)
 
                 with tab2:
-                    # 手牌覆盤區塊 (原 Tab 3 內容)
+                    # 手牌覆盤區塊 (優化版)
                     st.markdown("### 🔍 手牌覆盤")
                     col_list, col_detail = st.columns([1, 2])
                     
                     with col_list:
+                        # 優化手牌列表顯示：Hand #1: A♥️ K♠️
+                        def format_hand_label(i):
+                            hand = hands[i]
+                            hand_num = i + 1
+                            cards_display = cards_to_emoji(hand.get('hero_cards'))
+                            return f"Hand #{hand_num}: {cards_display}"
+                        
                         selected_index = st.radio(
                             "選擇手牌", 
                             range(len(hands)), 
-                            format_func=lambda i: f"Hand #{hands[i]['id']}",
+                            format_func=format_hand_label,
                             key="hand_radio"
                         )
                     
                     with col_detail:
                         hand_data = hands[selected_index]
-                        st.text_area("原始紀錄", hand_data['content'], height=300)
                         
-                        if st.button(f"🤖 AI 分析 Hand #{hand_data['id']}", key="analyze_btn"):
+                        # AI 分析按鈕
+                        if st.button(f"🤖 AI 分析這手牌", key="analyze_btn", use_container_width=True):
                             with st.spinner("AI 正在分析這手牌..."):
                                 analysis = analyze_specific_hand(hand_data['content'], api_key, selected_model)
                                 st.markdown("### 💡 AI 分析結果")
                                 st.markdown(analysis)
+                        else:
+                            # 未點擊按鈕時顯示提示
+                            st.info("👆 點擊上方按鈕，讓 AI 分析這手牌的決策。")
