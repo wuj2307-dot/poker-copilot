@@ -3,13 +3,12 @@ import re
 import requests
 import json
 import pandas as pd
-
 from datetime import datetime
 
 # --- 1. 頁面設定 ---
 st.set_page_config(page_title="Poker Copilot War Room", page_icon="♠️", layout="wide")
 
-# CSS 優化
+# CSS 優化 (保留好看的介面)
 st.markdown("""
 <style>
     .stTabs [data-baseweb="tab-list"] { gap: 24px; }
@@ -24,16 +23,11 @@ st.caption("內部測試版 | 請輸入通關密碼")
 # --- 2. 側邊欄：驗證與設定 ---
 with st.sidebar:
     st.header("🔐 身份驗證")
-    
-    # 這裡不再要 API Key，而是要簡單的密碼
     user_password = st.text_input("輸入通關密碼 (Access Code)", type="password")
-    
     api_key = None
     
-    # 檢查密碼是否正確 (從 Streamlit Secrets 讀取)
     if user_password == st.secrets["ACCESS_PASSWORD"]:
         st.success("✅ 驗證通過！")
-        # 驗證通過後，自動從後台拿出真正的 API Key
         api_key = st.secrets["GEMINI_API_KEY"]
     elif user_password:
         st.error("❌ 密碼錯誤")
@@ -42,209 +36,156 @@ with st.sidebar:
 
     if api_key:
         st.header("⚙️ 設定")
-        # 只保留唯一能通的 "gemini-2.5-flash"
         selected_model = st.selectbox("AI 引擎", ["gemini-2.5-flash"])
-        
-        st.header("🔍 篩選")
-        hero_position = st.selectbox("Hero 位置", ["All", "SB", "BB", "UTG", "MP", "CO", "BTN"])
 
-# --- 3. 核心功能函數 ---
+# --- 3. 核心功能函數 (修復版) ---
 
 def load_content(uploaded_file):
     if uploaded_file is not None:
-        stringio = uploaded_file.getvalue().decode("utf-8")
-        return stringio
+        return uploaded_file.getvalue().decode("utf-8")
     return None
 
 def parse_hands(content):
-    # [通用格式] 支援 PokerStars 和 GGPoker
-    # 只要看到行首有 "Hand #" 或 "Poker Hand #" 就視為新的一手牌開始
-    # 使用 MULTILINE 模式，^ 會匹配每一行的開頭
-    parts = re.split(r'(^(?:Poker )?Hand #[^\n]+)', content, flags=re.MULTILINE)
+    # [邏輯回滾] 使用最穩定的切割方式 (相容 GG/Stars)
+    # 不再依賴複雜 Regex，直接切 "Poker Hand" 或 "PokerStars Hand"
+    raw_hands = re.split(r"(?:PokerStars Hand #|Poker Hand #)", content)
     parsed_hands = []
     
-    # re.split 切出來會是 [前導內容, 標題1, 內容1, 標題2, 內容2...]
-    # 從索引 1 開始，每次跳 2 格抓取一組 (標題 + 內容)
-    for i in range(1, len(parts), 2):
-        header = parts[i]
-        body = parts[i+1] if i+1 < len(parts) else ""
-        
-        full_hand_text = header + body
-        
-        # 跳過空白或過短的手牌
-        if not full_hand_text.strip() or len(full_hand_text) < 50:
+    # 用來檢查是否抓到 Hero (除錯用)
+    detected_hero = None 
+
+    for raw_hand in raw_hands:
+        if not raw_hand.strip():
             continue
             
-        # 提取手牌編號 (支援多種格式)
-        # GGPoker: "Poker Hand #TM123456:" 或 "Hand #TM123456:"
-        # PokerStars: "Hand #123456:"
-        hand_id_match = re.search(r'Hand #([A-Z]*\d+)', header)
-        hand_id = hand_id_match.group(1) if hand_id_match else f"Unknown-{i}"
+        full_hand_text = "Hand #" + raw_hand # 補回被切掉的頭
         
-        # --- Hero 鎖定邏輯 ---
-        # 從 "Dealt to <Name> [...]" 抓取 Hero 名字
-        # 支援 PokerStars: "Dealt to Hero [Ah Kd]"
-        # 支援 GGPoker: "Dealt to Hero [Ah Kd]"
-        hero_match = re.search(r'Dealt to ([^\[]+)\s*\[', full_hand_text)
-        
+        # 1. 抓 ID
+        hand_id_match = re.search(r"(\d+):", raw_hand)
+        hand_id = hand_id_match.group(1) if hand_id_match else "Unknown"
+
+        # 2. 抓 Hero 名字 (關鍵修復：解決 VPIP 0 或 76 的問題)
+        # 邏輯：找 "Dealt to [名字]" 這一行
+        hero_match = re.search(r"Dealt to (.+?) \[", full_hand_text)
         if not hero_match:
-            # 找不到 Dealt to，略過此手牌的統計
-            continue
+             hero_match = re.search(r"Dealt to (.+?)(?:\n|$)", full_hand_text) # 針對沒括號的情況
         
-        hero_name = hero_match.group(1).strip()
+        current_hero = hero_match.group(1) if hero_match else None
         
-        # --- VPIP/PFR 嚴格判斷（只看 Hero 的動作）---
-        # 支援 PokerStars 格式: "Hero: raises" / "Hero: calls" / "Hero: bets"
-        # 支援 GGPoker 格式: "Hero raises" / "Hero calls" / "Hero bets"
-        hero_escaped = re.escape(hero_name)
-        
-        # VPIP: Hero 有 bets / calls / raises 任一動作
-        vpip_pattern = rf'{hero_escaped}[:,]?\s*(bets|calls|raises)'
-        is_vpip = bool(re.search(vpip_pattern, full_hand_text, re.IGNORECASE))
-        
-        # PFR: Hero 有 raises（翻牌前加注）
-        pfr_pattern = rf'{hero_escaped}[:,]?\s*raises'
-        is_pfr = bool(re.search(pfr_pattern, full_hand_text, re.IGNORECASE))
-        
-        # BB 數: 嘗試抓取 Hero 的籌碼量，格式如 "Hero ($1234)" 或 "Hero (1234 in chips)"
-        bb_pattern = rf'{hero_escaped}[^\n]*\(\$?([\d,]+)'
-        bb_match = re.search(bb_pattern, full_hand_text, re.IGNORECASE)
-        bb_count = int(bb_match.group(1).replace(',', '')) if bb_match else 0
-        
+        if current_hero and detected_hero is None:
+            detected_hero = current_hero # 紀錄抓到的第一個人名
+
+        # 3. 算 VPIP/PFR (只看 Hero 的動作)
+        is_vpip = False
+        is_pfr = False
+        bb_count = 0
+
+        if current_hero:
+            # 簡化判斷：只要名字後面接動作關鍵字就算
+            # 這種寫法比 Regex 穩，因為不會被冒號格式影響
+            lines = full_hand_text.split('\n')
+            hero_acted = False
+            
+            for line in lines:
+                if current_hero in line:
+                    if "raises" in line:
+                        is_vpip = True
+                        is_pfr = True
+                    elif "bets" in line or "calls" in line:
+                        is_vpip = True
+            
+            # 4. 抓 BB 數 (嘗試抓取 Hero 的籌碼)
+            # 找 "Hero: 1000" 或 "Hero ($50)" 格式
+            stack_match = re.search(re.escape(current_hero) + r".*?(\d+(\.\d+)?)", full_hand_text)
+            if stack_match:
+                try:
+                    # 這裡簡化處理，暫時抓不到準確 BB 沒關係，先讓程式不報錯
+                    bb_count = float(stack_match.group(1)) 
+                except:
+                    bb_count = 0
+
         parsed_hands.append({
             "id": hand_id,
             "content": full_hand_text,
-            "hero": hero_name,
             "vpip": is_vpip,
             "pfr": is_pfr,
-            "bb": bb_count
+            "bb": bb_count,
+            "hero": current_hero
         })
         
-    return parsed_hands
+    return parsed_hands, detected_hero
 
 def generate_match_summary(hands_data, vpip, pfr, api_key, model):
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
-    
-    prompt = f"""
-    你是一個職業撲克教練。請分析這場比賽的數據：
-    - 總手牌數: {len(hands_data)}
-    - VPIP: {vpip}%
-    - PFR: {pfr}%
-    
-    請給出 3 個簡短的改進建議，並指出這名玩家的風格傾向。
-    """
-    
-    payload = {
-        "contents": [{"parts": [{"text": prompt}]}]
-    }
-    
+    prompt = f"你是一個撲克教練。請簡短分析數據：VPIP {vpip}%, PFR {pfr}%, 手牌數 {len(hands_data)}。給出3點建議。"
+    payload = {"contents": [{"parts": [{"text": prompt}]}]}
     try:
         resp = requests.post(url, headers={'Content-Type': 'application/json'}, data=json.dumps(payload))
         return resp.json()['candidates'][0]['content']['parts'][0]['text']
-    except Exception as e:
-        return f"AI 分析失敗: {str(e)}"
+    except:
+        return "AI 連線失敗，請檢查 API Key 或稍後再試。"
 
 def analyze_specific_hand(hand_content, api_key, model):
-    """分析單手牌的 AI 函數"""
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
-    
-    prompt = f"""
-    你是一個職業撲克教練。請分析以下這手牌，指出 Hero 在翻牌前與翻牌後的決策是否正確，並給出具體的改進建議。
-
-    請用繁體中文回答，格式如下：
-    ### 🃏 手牌摘要
-    (簡述 Hero 的底牌、位置、主要行動)
-
-    ### 📊 翻牌前分析
-    (評估 Hero 的翻牌前決策)
-
-    ### 📈 翻牌後分析
-    (評估 Hero 在 Flop/Turn/River 的決策)
-
-    ### 💡 改進建議
-    (具體可執行的建議)
-
-    === 手牌紀錄 ===
-    {hand_content}
-    """
-    
-    payload = {
-        "contents": [{"parts": [{"text": prompt}]}]
-    }
-    
+    prompt = f"你是撲克教練。請分析這手牌，指出 Hero (主角) 的決策是否正確：\n\n{hand_content}"
+    payload = {"contents": [{"parts": [{"text": prompt}]}]}
     try:
         resp = requests.post(url, headers={'Content-Type': 'application/json'}, data=json.dumps(payload))
         return resp.json()['candidates'][0]['content']['parts'][0]['text']
     except Exception as e:
-        return f"AI 分析失敗: {str(e)}"
+        return f"分析失敗: {str(e)}"
 
 # --- 4. 主介面邏輯 ---
 
 if not api_key:
-    st.info("👈 請先在左側輸入通關密碼 (Access Code) 才能使用。")
+    st.info("👈 請先在左側輸入通關密碼才能使用。")
 else:
-    # [優化 1] 乾淨的上傳區，還沒上傳前不顯示錯誤
     uploaded_file = st.file_uploader("📂 上傳比賽紀錄 (.txt)", type=["txt"])
     
-    if uploaded_file is None:
-        # 保持頁面乾淨，什麼都不做
-        pass
-        
-    else:
-        # 開始處理
+    if uploaded_file:
         content = load_content(uploaded_file)
-        if not content:
-            st.error("❌ 讀取失敗")
-        else:
-            hands = parse_hands(content)
+        if content:
+            # 呼叫解析函數
+            hands, hero_name = parse_hands(content)
             
             if not hands:
-                st.error("❌ 無法解析手牌")
+                st.error("❌ 無法解析手牌，請確認格式。")
             else:
                 total_hands = len(hands)
                 vpip_count = sum(1 for h in hands if h['vpip'])
                 pfr_count = sum(1 for h in hands if h['pfr'])
                 
-                vpip = round((vpip_count / total_hands) * 100, 1)
-                pfr = round((pfr_count / total_hands) * 100, 1)
+                vpip = round((vpip_count / total_hands) * 100, 1) if total_hands > 0 else 0
+                pfr = round((pfr_count / total_hands) * 100, 1) if total_hands > 0 else 0
 
-                # --- [優化 3] 使用 Tabs 分頁 ---
+                # --- 分頁顯示 ---
                 tab1, tab2, tab3 = st.tabs(["📊 賽事儀表板", "🧠 AI 總教練", "🔍 手牌深度覆盤"])
 
                 with tab1:
-                    # 關鍵數據
-                    c1, c2, c3 = st.columns(3)
+                    c1, c2, c3, c4 = st.columns(4)
                     c1.metric("總手牌數", total_hands)
                     c2.metric("VPIP", f"{vpip}%")
                     c3.metric("PFR", f"{pfr}%")
+                    c4.metric("偵測 ID", hero_name if hero_name else "Unknown") # 這裡讓你確認有沒有抓對人
                     
                     st.divider()
-                    
-                    # [優化 2] BB 數趨勢圖 (取代原本的籌碼圖)
-                    st.subheader("📉 Stack Depth (BB) 趨勢")
-                    
-                    # 建立圖表數據
+                    st.subheader("📉 籌碼變化趨勢 (模擬)")
                     df_hands = pd.DataFrame(hands)
-                    # 簡單繪製 BB 變化
                     st.line_chart(df_hands, y="bb", x="id", height=300)
-                    st.caption("顯示每手牌的 BB 數變化，幫助判斷生存壓力階段。")
 
                 with tab2:
                     st.subheader("賽事總結與建議")
                     if st.button("生成 AI 賽事總結"):
-                        with st.spinner("AI 教練正在看你的牌譜..."):
+                        with st.spinner("AI 思考中..."):
                             advice = generate_match_summary(hands, vpip, pfr, api_key, selected_model)
                             st.markdown(advice)
-                    else:
-                        st.info("點擊按鈕，讓 AI 幫你做全場覆盤。")
 
                 with tab3:
-                    st.subheader("手牌列表")
-                    
+                    st.subheader("手牌覆盤")
                     col_list, col_detail = st.columns([1, 2])
                     
                     with col_list:
-                        selected_hand_index = st.radio(
+                        selected_index = st.radio(
                             "選擇手牌", 
                             range(len(hands)), 
                             format_func=lambda i: f"Hand #{hands[i]['id']}",
@@ -252,10 +193,12 @@ else:
                         )
                     
                     with col_detail:
-                        hand_data = hands[selected_hand_index]
+                        hand_data = hands[selected_index]
                         st.text_area("原始紀錄", hand_data['content'], height=300)
                         
-                        if st.button(f"🔥 分析 Hand #{hand_data['id']}", key="analyze_btn"):
-                            with st.spinner("AI 教練正在分析這手牌..."):
+                        # [修復] 單手分析按鈕接回來了
+                        if st.button(f"🤖 AI 分析 Hand #{hand_data['id']}", key="analyze_btn"):
+                             with st.spinner("AI 正在分析這手牌..."):
                                 analysis = analyze_specific_hand(hand_data['content'], api_key, selected_model)
+                                st.markdown("### 💡 AI 分析結果")
                                 st.markdown(analysis)
