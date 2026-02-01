@@ -3,7 +3,7 @@ import re
 import requests
 import json
 import pandas as pd
-import random
+
 from datetime import datetime
 
 # --- 1. 頁面設定 ---
@@ -81,10 +81,22 @@ def parse_hands(content):
         hand_id_match = re.search(r'Hand #([A-Z]*\d+)', header)
         hand_id = hand_id_match.group(1) if hand_id_match else f"Unknown-{i}"
         
-        # 模擬數據 (之後這裡會接真實分析)
-        is_vpip = random.choice([True, False])
-        is_pfr = random.choice([True, False]) if is_vpip else False
-        bb_count = random.randint(10, 100)
+        # --- 真實數據解析 (移除假數據) ---
+        text_lower = full_hand_text.lower()
+        
+        # VPIP: 手牌中包含 raise / bet / call 就算有玩
+        is_vpip = bool(re.search(r'\b(raise|bet|call)\b', text_lower))
+        
+        # PFR: 在 HOLE CARDS 到 FLOP 之間包含 raise
+        preflop_section = re.search(r'hole cards(.*?)(flop|summary)', text_lower, re.DOTALL)
+        is_pfr = False
+        if preflop_section:
+            preflop_text = preflop_section.group(1)
+            is_pfr = 'raise' in preflop_text
+        
+        # BB 數: 嘗試抓取 Hero 的籌碼量，格式如 "Hero ($1234)" 或 "Hero (1234 in chips)"
+        bb_match = re.search(r'hero[^\n]*\(\$?([\d,]+)', text_lower)
+        bb_count = int(bb_match.group(1).replace(',', '')) if bb_match else 0
         
         parsed_hands.append({
             "id": hand_id,
@@ -106,6 +118,40 @@ def generate_match_summary(hands_data, vpip, pfr, api_key, model):
     - PFR: {pfr}%
     
     請給出 3 個簡短的改進建議，並指出這名玩家的風格傾向。
+    """
+    
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}]
+    }
+    
+    try:
+        resp = requests.post(url, headers={'Content-Type': 'application/json'}, data=json.dumps(payload))
+        return resp.json()['candidates'][0]['content']['parts'][0]['text']
+    except Exception as e:
+        return f"AI 分析失敗: {str(e)}"
+
+def analyze_specific_hand(hand_content, api_key, model):
+    """分析單手牌的 AI 函數"""
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+    
+    prompt = f"""
+    你是一個職業撲克教練。請分析以下這手牌，指出 Hero 在翻牌前與翻牌後的決策是否正確，並給出具體的改進建議。
+
+    請用繁體中文回答，格式如下：
+    ### 🃏 手牌摘要
+    (簡述 Hero 的底牌、位置、主要行動)
+
+    ### 📊 翻牌前分析
+    (評估 Hero 的翻牌前決策)
+
+    ### 📈 翻牌後分析
+    (評估 Hero 在 Flop/Turn/River 的決策)
+
+    ### 💡 改進建議
+    (具體可執行的建議)
+
+    === 手牌紀錄 ===
+    {hand_content}
     """
     
     payload = {
@@ -195,5 +241,7 @@ else:
                         hand_data = hands[selected_hand_index]
                         st.text_area("原始紀錄", hand_data['content'], height=300)
                         
-                        if st.button(f"分析 Hand #{hand_data['id']}", key="analyze_btn"):
-                             st.info("單手牌 AI 分析功能開發中...")
+                        if st.button(f"🔥 分析 Hand #{hand_data['id']}", key="analyze_btn"):
+                            with st.spinner("AI 教練正在分析這手牌..."):
+                                analysis = analyze_specific_hand(hand_data['content'], api_key, selected_model)
+                                st.markdown(analysis)
