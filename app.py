@@ -57,32 +57,38 @@ def load_content(uploaded_file):
     return None
 
 def parse_hands(content):
-    # 簡單的切割手牌邏輯 (以 PokerStars 為例)
-    raw_hands = re.split(r"PokerStars Hand #", content)
+    # [修正] 使用更聰明的 Regex 切割
+    # 這裡會抓取 "PokerStars" 開頭，直到 "Hand #數字:" 結束的標題
+    # 這樣無論是 Zoom, Home Game 還是錦標賽都能抓到
+    parts = re.split(r"(PokerStars.*?Hand #\d+:)", content)
     parsed_hands = []
     
-    for i, raw_hand in enumerate(raw_hands):
-        if not raw_hand.strip():
+    # re.split 切出來會是 [空字串, 標題1, 內容1, 標題2, 內容2...]
+    # 所以我們從 1 開始，每次跳 2 格抓取一組
+    for i in range(1, len(parts), 2):
+        header = parts[i]
+        body = parts[i+1] if i+1 < len(parts) else ""
+        
+        full_hand_text = header + body
+        
+        if not full_hand_text.strip():
             continue
             
-        full_hand_text = "PokerStars Hand #" + raw_hand
-        
-        # 提取手牌編號
-        hand_id_match = re.search(r"(\d+):", raw_hand)
+        # 提取手牌編號 (直接從標題抓)
+        hand_id_match = re.search(r"Hand #(\d+):", header)
         hand_id = hand_id_match.group(1) if hand_id_match else f"Unknown-{i}"
         
-        # 模擬一些隨機數據 (因為還沒寫真的解析邏輯)
-        # 之後這裡會換成真的解析程式碼
+        # 模擬數據 (之後這裡會接真實分析)
         is_vpip = random.choice([True, False])
         is_pfr = random.choice([True, False]) if is_vpip else False
-        bb_count = random.randint(10, 100) # 模擬 BB 數
+        bb_count = random.randint(10, 100)
         
         parsed_hands.append({
             "id": hand_id,
             "content": full_hand_text,
             "vpip": is_vpip,
             "pfr": is_pfr,
-            "bb": bb_count # 加入 BB 數
+            "bb": bb_count
         })
         
     return parsed_hands
