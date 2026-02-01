@@ -9,7 +9,7 @@ st.set_page_config(page_title="Poker Copilot War Room", page_icon="♠️", layo
 
 # CSS 優化
 
-st.title("♠️ Poker Copilot: Alpha")
+st.title("Poker Copilot: Beta 🚀")
 st.caption("內部測試版 | 請輸入通關密碼")
 
 # --- 2. 側邊欄：驗證與設定 ---
