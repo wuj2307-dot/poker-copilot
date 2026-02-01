@@ -2,6 +2,7 @@ import streamlit as st
 import re
 import requests
 import json
+from datetime import datetime
 
 # --- 1. 頁面設定 ---
 st.set_page_config(page_title="Poker Copilot War Room", page_icon="♠️", layout="wide")
@@ -191,6 +192,7 @@ if not api_key:
 else:
     uploaded_file = st.file_uploader("📂 上傳比賽紀錄 (.txt)", type=["txt"])
     if uploaded_file:
+        print(f"[UPLOAD] 檔名: {uploaded_file.name} | 大小: {uploaded_file.size} bytes | 時間: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         content = load_content(uploaded_file)
         if content:
             hands = parse_hands(content)
