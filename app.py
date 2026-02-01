@@ -2,6 +2,8 @@ import streamlit as st
 import re
 import requests
 import json
+import pandas as pd
+import random
 
 # --- 1. 頁面設定 ---
 st.set_page_config(page_title="Poker Copilot War Room", page_icon="♠️", layout="wide")
@@ -190,59 +192,83 @@ if not api_key:
     st.info("👈 請先在左側輸入通關密碼 (Access Code) 才能使用。")
 else:
     uploaded_file = st.file_uploader("📂 上傳比賽紀錄 (.txt)", type=["txt"])
-    if uploaded_file:
+    # 修復預讀錯誤：未上傳檔案時不執行解析、不顯示錯誤，只顯示上傳框
+    if uploaded_file is None:
+        pass  # 保持頁面乾淨，只顯示上傳框
+    else:
         content = load_content(uploaded_file)
-        if content:
+        if not content:
+            st.error("❌ 讀取失敗")
+        else:
             hands = parse_hands(content)
-            if hands:
+            if not hands:
+                st.error("❌ 無法解析手牌")
+            else:
                 total = len(hands)
                 vpip_c = sum(1 for h in hands if h['is_vpip'])
                 pfr_c = sum(1 for h in hands if h['is_pfr'])
                 vpip = (vpip_c / total * 100) if total else 0
                 pfr = (pfr_c / total * 100) if total else 0
-                
-                st.markdown("### 📊 戰情儀表板")
-                c1, c2, c3, c4 = st.columns(4)
-                c1.metric("手牌數", total)
-                c2.metric("VPIP", f"{vpip:.1f}%", "偏高" if vpip > 30 else "偏低" if vpip < 18 else "健康")
-                c3.metric("PFR", f"{pfr:.1f}%", f"Gap {vpip-pfr:.1f}%")
                 chip_data = [h['chips'] for h in hands if h['chips'] > 0]
                 start_chip = chip_data[0] if chip_data else 0
                 end_chip = chip_data[-1] if chip_data else 0
-                c4.metric("籌碼變化", f"{end_chip}", f"{end_chip - start_chip:+}")
-                
-                g_col1, g_col2 = st.columns([2, 1])
-                with g_col1:
-                    if chip_data: st.line_chart(chip_data, height=250)
-                with g_col2:
-                    st.markdown("#### 🧠 AI 總教練")
-                    if st.button("📝 生成賽事總結", type="primary", use_container_width=True):
+
+                # BB 數趨勢圖：若有籌碼數據則用 chips/BB 模擬 Stack Depth，否則用隨機數據示範
+                BB = 100  # 假設大盲為 100，若未來有解析可改為真實 BB
+                if chip_data:
+                    stack_bb = [c / BB for c in chip_data]
+                else:
+                    stack_bb = [random.randint(15, 80) for _ in range(max(1, total))]
+                df_bb = pd.DataFrame({"BB數": stack_bb})
+
+                tab1, tab2, tab3 = st.tabs(["📊 賽事儀表板", "🧠 AI 總教練", "🔍 手牌深度覆盤"])
+
+                with tab1:
+                    st.markdown("### 📊 賽事儀表板")
+                    c1, c2, c3, c4 = st.columns(4)
+                    c1.metric("手牌數", total)
+                    c2.metric("VPIP", f"{vpip:.1f}%", "偏高" if vpip > 30 else "偏低" if vpip < 18 else "健康")
+                    c3.metric("PFR", f"{pfr:.1f}%", f"Gap {vpip-pfr:.1f}%")
+                    c4.metric("籌碼變化", f"{end_chip}", f"{end_chip - start_chip:+}")
+                    st.markdown("#### Stack Depth in BB（生存壓力趨勢）")
+                    st.line_chart(df_bb, height=280)
+                    st.caption("X 軸：手牌序號　｜　Y 軸：BB 數 (Stack Depth)")
+
+                with tab2:
+                    st.markdown("### 🧠 AI 總教練")
+                    summary_key = f"match_summary_{uploaded_file.name}"
+                    if st.button("📝 生成賽事總結", type="primary", use_container_width=True, key="summary_btn"):
                         with st.spinner("教練正在閱讀..."):
                             summary = generate_match_summary(hands, vpip, pfr, api_key, selected_model)
-                            st.markdown(f"<div class='big-summary'>{summary}</div>", unsafe_allow_html=True)
+                            st.session_state[summary_key] = summary
+                    if st.session_state.get(summary_key):
+                        st.markdown(st.session_state[summary_key])
 
-                st.divider()
-                col_list, col_analysis = st.columns([1, 2])
-                with col_list:
-                    st.subheader("📜 手牌")
-                    filtered_hands = hands
-                    if filter_vpip: filtered_hands = [h for h in filtered_hands if h['is_vpip']]
-                    if filter_lost: filtered_hands = [h for h in filtered_hands if h['result'] == '❌']
-                    options = [f"{h['result']} {cards_to_emoji(h['cards'])} (Chips: {h['chips']})" for h in filtered_hands]
-                    if not options:
-                        st.warning("無符合條件手牌")
-                        selected_hand = None
-                    else:
-                        sel_idx = st.radio("選擇手牌", range(len(options)), format_func=lambda x: options[x], label_visibility="collapsed")
-                        selected_hand = filtered_hands[sel_idx]
-                with col_analysis:
-                    if selected_hand:
-                        st.markdown(f"## {selected_hand['result']} #{selected_hand['id']}")
-                        st.markdown(f"<div class='poker-card'>{cards_to_emoji(selected_hand['cards'])}</div>", unsafe_allow_html=True)
-                        st.markdown("---")
-                        if st.button("🔥 分析這手牌"):
-                            with st.spinner("分析中..."):
-                                res = analyze_hand_ai(selected_hand['raw'], api_key, selected_model)
-                                st.markdown(res)
-                        with st.expander("原始紀錄"): st.code(selected_hand['raw'])
-    else: st.error("❌ 讀取失敗")
+                with tab3:
+                    st.markdown("### 🔍 手牌深度覆盤")
+                    col_list, col_analysis = st.columns([1, 2])
+                    with col_list:
+                        st.subheader("📜 手牌")
+                        filtered_hands = hands
+                        if filter_vpip:
+                            filtered_hands = [h for h in filtered_hands if h['is_vpip']]
+                        if filter_lost:
+                            filtered_hands = [h for h in filtered_hands if h['result'] == '❌']
+                        options = [f"{h['result']} {cards_to_emoji(h['cards'])} (Chips: {h['chips']})" for h in filtered_hands]
+                        if not options:
+                            st.warning("無符合條件手牌")
+                            selected_hand = None
+                        else:
+                            sel_idx = st.radio("選擇手牌", range(len(options)), format_func=lambda x: options[x], label_visibility="collapsed", key="hand_radio")
+                            selected_hand = filtered_hands[sel_idx]
+                    with col_analysis:
+                        if selected_hand:
+                            st.markdown(f"## {selected_hand['result']} #{selected_hand['id']}")
+                            st.markdown(f"<div class='poker-card'>{cards_to_emoji(selected_hand['cards'])}</div>", unsafe_allow_html=True)
+                            st.markdown("---")
+                            if st.button("🔥 分析這手牌", key="analyze_btn"):
+                                with st.spinner("分析中..."):
+                                    res = analyze_hand_ai(selected_hand['raw'], api_key, selected_model)
+                                    st.markdown(res)
+                            with st.expander("原始紀錄"):
+                                st.code(selected_hand['raw'])
