@@ -195,26 +195,31 @@ else:
                 vpip = round((vpip_count / total_hands) * 100, 1) if total_hands > 0 else 0
                 pfr = round((pfr_count / total_hands) * 100, 1) if total_hands > 0 else 0
 
-                # --- 分頁顯示 ---
-                tab1, tab2, tab3 = st.tabs(["📊 賽事儀表板", "🧠 AI 總教練", "🔍 手牌深度覆盤"])
+                # --- 分頁顯示 (合併為 2 個分頁) ---
+                tab1, tab2 = st.tabs(["📊 賽事儀表板", "🔍 手牌深度覆盤"])
 
                 with tab1:
+                    # 數據卡片區塊
                     st.markdown("### 📊 關鍵數據")
                     c1, c2, c3, c4 = st.columns(4)
                     c1.metric("總手牌數", total_hands)
                     c2.metric("VPIP", f"{vpip}%")
                     c3.metric("PFR", f"{pfr}%")
                     c4.metric("Hero ID", hero_name if hero_name else "Unknown")
-
-                with tab2:
-                    st.subheader("賽事總結與建議")
-                    if st.button("生成 AI 賽事總結"):
+                    
+                    # 分隔線
+                    st.divider()
+                    
+                    # AI 賽事總結區塊 (原 Tab 2 內容)
+                    st.markdown("### 🧠 AI 賽事總結")
+                    if st.button("生成 AI 賽事總結", key="summary_btn"):
                         with st.spinner("AI 思考中..."):
                             advice = generate_match_summary(hands, vpip, pfr, api_key, selected_model)
                             st.markdown(advice)
 
-                with tab3:
-                    st.subheader("手牌覆盤")
+                with tab2:
+                    # 手牌覆盤區塊 (原 Tab 3 內容)
+                    st.markdown("### 🔍 手牌覆盤")
                     col_list, col_detail = st.columns([1, 2])
                     
                     with col_list:
@@ -229,9 +234,8 @@ else:
                         hand_data = hands[selected_index]
                         st.text_area("原始紀錄", hand_data['content'], height=300)
                         
-                        # [修復] 單手分析按鈕接回來了
                         if st.button(f"🤖 AI 分析 Hand #{hand_data['id']}", key="analyze_btn"):
-                             with st.spinner("AI 正在分析這手牌..."):
+                            with st.spinner("AI 正在分析這手牌..."):
                                 analysis = analyze_specific_hand(hand_data['content'], api_key, selected_model)
                                 st.markdown("### 💡 AI 分析結果")
                                 st.markdown(analysis)
