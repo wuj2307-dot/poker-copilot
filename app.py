@@ -81,26 +81,40 @@ def parse_hands(content):
         hand_id_match = re.search(r'Hand #([A-Z]*\d+)', header)
         hand_id = hand_id_match.group(1) if hand_id_match else f"Unknown-{i}"
         
-        # --- 真實數據解析 (移除假數據) ---
-        text_lower = full_hand_text.lower()
+        # --- Hero 鎖定邏輯 ---
+        # 從 "Dealt to <Name> [...]" 抓取 Hero 名字
+        # 支援 PokerStars: "Dealt to Hero [Ah Kd]"
+        # 支援 GGPoker: "Dealt to Hero [Ah Kd]"
+        hero_match = re.search(r'Dealt to ([^\[]+)\s*\[', full_hand_text)
         
-        # VPIP: 手牌中包含 raise / bet / call 就算有玩
-        is_vpip = bool(re.search(r'\b(raise|bet|call)\b', text_lower))
+        if not hero_match:
+            # 找不到 Dealt to，略過此手牌的統計
+            continue
         
-        # PFR: 在 HOLE CARDS 到 FLOP 之間包含 raise
-        preflop_section = re.search(r'hole cards(.*?)(flop|summary)', text_lower, re.DOTALL)
-        is_pfr = False
-        if preflop_section:
-            preflop_text = preflop_section.group(1)
-            is_pfr = 'raise' in preflop_text
+        hero_name = hero_match.group(1).strip()
+        
+        # --- VPIP/PFR 嚴格判斷（只看 Hero 的動作）---
+        # 支援 PokerStars 格式: "Hero: raises" / "Hero: calls" / "Hero: bets"
+        # 支援 GGPoker 格式: "Hero raises" / "Hero calls" / "Hero bets"
+        hero_escaped = re.escape(hero_name)
+        
+        # VPIP: Hero 有 bets / calls / raises 任一動作
+        vpip_pattern = rf'{hero_escaped}[:,]?\s*(bets|calls|raises)'
+        is_vpip = bool(re.search(vpip_pattern, full_hand_text, re.IGNORECASE))
+        
+        # PFR: Hero 有 raises（翻牌前加注）
+        pfr_pattern = rf'{hero_escaped}[:,]?\s*raises'
+        is_pfr = bool(re.search(pfr_pattern, full_hand_text, re.IGNORECASE))
         
         # BB 數: 嘗試抓取 Hero 的籌碼量，格式如 "Hero ($1234)" 或 "Hero (1234 in chips)"
-        bb_match = re.search(r'hero[^\n]*\(\$?([\d,]+)', text_lower)
+        bb_pattern = rf'{hero_escaped}[^\n]*\(\$?([\d,]+)'
+        bb_match = re.search(bb_pattern, full_hand_text, re.IGNORECASE)
         bb_count = int(bb_match.group(1).replace(',', '')) if bb_match else 0
         
         parsed_hands.append({
             "id": hand_id,
             "content": full_hand_text,
+            "hero": hero_name,
             "vpip": is_vpip,
             "pfr": is_pfr,
             "bb": bb_count
