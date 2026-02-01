@@ -2,18 +2,53 @@ import streamlit as st
 import re
 import requests
 import json
-import pandas as pd
 from datetime import datetime
 
 # --- 1. 頁面設定 ---
 st.set_page_config(page_title="Poker Copilot War Room", page_icon="♠️", layout="wide")
 
-# CSS 優化 (保留好看的介面)
+# CSS 優化 (數據卡片樣式)
 st.markdown("""
 <style>
+    /* Tab 樣式 */
     .stTabs [data-baseweb="tab-list"] { gap: 24px; }
-    .stTabs [data-baseweb="tab"] { height: 50px; white-space: pre-wrap; background-color: #0e1117; border-radius: 4px 4px 0px 0px; gap: 1px; padding-top: 10px; padding-bottom: 10px; }
-    div[data-testid="stMetricValue"] { font-size: 24px; }
+    .stTabs [data-baseweb="tab"] { 
+        height: 50px; 
+        white-space: pre-wrap; 
+        background-color: #0e1117; 
+        border-radius: 4px 4px 0px 0px; 
+        padding: 10px; 
+    }
+    
+    /* Metric 數據卡片樣式 */
+    div[data-testid="stMetricValue"] { 
+        font-size: 36px; 
+        font-weight: 700;
+        color: #00FF88;
+        text-shadow: 0 0 10px rgba(0, 255, 136, 0.3);
+    }
+    
+    div[data-testid="stMetricLabel"] { 
+        font-size: 14px; 
+        font-weight: 600;
+        color: #AAAAAA;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+    }
+    
+    /* Metric 容器卡片效果 */
+    div[data-testid="stMetric"] {
+        background: linear-gradient(145deg, #1a1a2e, #16213e);
+        border: 1px solid #2a2a4a;
+        border-radius: 12px;
+        padding: 20px 16px;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+    }
+    
+    /* Metric delta (變化值) 樣式 */
+    div[data-testid="stMetricDelta"] {
+        font-size: 12px;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -46,64 +81,66 @@ def load_content(uploaded_file):
     return None
 
 def parse_hands(content):
-    # [邏輯回滾] 使用最穩定的切割方式 (相容 GG/Stars)
-    # 不再依賴複雜 Regex，直接切 "Poker Hand" 或 "PokerStars Hand"
-    raw_hands = re.split(r"(?:PokerStars Hand #|Poker Hand #)", content)
+    """
+    專為 GGPoker 格式設計的手牌解析器
+    參考檔案: GGtest.txt
+    """
+    # 切割手牌：以 "Poker Hand #" 為分隔符
+    raw_hands = re.split(r"(?=Poker Hand #)", content)
     parsed_hands = []
-    
-    # 用來檢查是否抓到 Hero (除錯用)
-    detected_hero = None 
+    detected_hero = None
 
     for raw_hand in raw_hands:
-        if not raw_hand.strip():
+        if not raw_hand.strip() or len(raw_hand) < 100:
             continue
-            
-        full_hand_text = "Hand #" + raw_hand # 補回被切掉的頭
         
-        # 1. 抓 ID
-        hand_id_match = re.search(r"(\d+):", raw_hand)
+        full_hand_text = raw_hand.strip()
+        
+        # 1. 抓取手牌 ID (格式: "Poker Hand #TM5492660659:")
+        hand_id_match = re.search(r"Poker Hand #(TM\d+):", full_hand_text)
         hand_id = hand_id_match.group(1) if hand_id_match else "Unknown"
-
-        # 2. 抓 Hero 名字 (關鍵修復：解決 VPIP 0 或 76 的問題)
-        # 邏輯：找 "Dealt to [名字]" 這一行
-        hero_match = re.search(r"Dealt to (.+?) \[", full_hand_text)
-        if not hero_match:
-             hero_match = re.search(r"Dealt to (.+?)(?:\n|$)", full_hand_text) # 針對沒括號的情況
         
+        # 2. 抓取 Big Blind 大小 (格式: "Level19(1,750/3,500)")
+        bb_size_match = re.search(r"Level\d+\([\d,]+/([\d,]+)\)", full_hand_text)
+        bb_size = int(bb_size_match.group(1).replace(",", "")) if bb_size_match else 1
+        
+        # 3. 抓取 Hero 名字
+        # GGPoker 格式：只有 Hero 會有 "Dealt to <Name> [牌]"，其他玩家是 "Dealt to <Name>" (無牌或空)
+        # 關鍵：找有實際手牌的那行 (中括號內有內容)
+        hero_match = re.search(r"Dealt to (\S+) \[[A-Za-z0-9]{2} [A-Za-z0-9]{2}\]", full_hand_text)
         current_hero = hero_match.group(1) if hero_match else None
         
         if current_hero and detected_hero is None:
-            detected_hero = current_hero # 紀錄抓到的第一個人名
-
-        # 3. 算 VPIP/PFR (只看 Hero 的動作)
+            detected_hero = current_hero
+        
+        # 如果找不到 Hero，跳過此手牌
+        if not current_hero:
+            continue
+        
+        # 4. 抓取 Hero 的起始籌碼 (格式: "Seat 6: Hero (35,803 in chips)")
+        stack_pattern = rf"Seat \d+: {re.escape(current_hero)} \(([\d,]+) in chips\)"
+        stack_match = re.search(stack_pattern, full_hand_text)
+        hero_chips = int(stack_match.group(1).replace(",", "")) if stack_match else 0
+        bb_count = round(hero_chips / bb_size, 1) if bb_size > 0 else 0
+        
+        # 5. 計算 VPIP/PFR (嚴格只看 Hero 的主動動作)
+        # 排除盲注投入：posts small blind / posts big blind / posts the ante
         is_vpip = False
         is_pfr = False
-        bb_count = 0
-
-        if current_hero:
-            # 簡化判斷：只要名字後面接動作關鍵字就算
-            # 這種寫法比 Regex 穩，因為不會被冒號格式影響
-            lines = full_hand_text.split('\n')
-            hero_acted = False
-            
-            for line in lines:
-                if current_hero in line:
-                    if "raises" in line:
-                        is_vpip = True
-                        is_pfr = True
-                    elif "bets" in line or "calls" in line:
-                        is_vpip = True
-            
-            # 4. 抓 BB 數 (嘗試抓取 Hero 的籌碼)
-            # 找 "Hero: 1000" 或 "Hero ($50)" 格式
-            stack_match = re.search(re.escape(current_hero) + r".*?(\d+(\.\d+)?)", full_hand_text)
-            if stack_match:
-                try:
-                    # 這裡簡化處理，暫時抓不到準確 BB 沒關係，先讓程式不報錯
-                    bb_count = float(stack_match.group(1)) 
-                except:
-                    bb_count = 0
-
+        
+        hero_escaped = re.escape(current_hero)
+        
+        # VPIP: Hero 有 raises / calls / bets (排除 posts)
+        # 格式: "Hero: raises 31,803" 或 "Hero: calls 1,600"
+        vpip_pattern = rf"^{hero_escaped}: (raises|calls|bets)"
+        if re.search(vpip_pattern, full_hand_text, re.MULTILINE):
+            is_vpip = True
+        
+        # PFR: Hero 有 raises
+        pfr_pattern = rf"^{hero_escaped}: raises"
+        if re.search(pfr_pattern, full_hand_text, re.MULTILINE):
+            is_pfr = True
+        
         parsed_hands.append({
             "id": hand_id,
             "content": full_hand_text,
@@ -112,7 +149,7 @@ def parse_hands(content):
             "bb": bb_count,
             "hero": current_hero
         })
-        
+    
     return parsed_hands, detected_hero
 
 def generate_match_summary(hands_data, vpip, pfr, api_key, model):
@@ -162,16 +199,12 @@ else:
                 tab1, tab2, tab3 = st.tabs(["📊 賽事儀表板", "🧠 AI 總教練", "🔍 手牌深度覆盤"])
 
                 with tab1:
+                    st.markdown("### 📊 關鍵數據")
                     c1, c2, c3, c4 = st.columns(4)
                     c1.metric("總手牌數", total_hands)
                     c2.metric("VPIP", f"{vpip}%")
                     c3.metric("PFR", f"{pfr}%")
-                    c4.metric("偵測 ID", hero_name if hero_name else "Unknown") # 這裡讓你確認有沒有抓對人
-                    
-                    st.divider()
-                    st.subheader("📉 籌碼變化趨勢 (模擬)")
-                    df_hands = pd.DataFrame(hands)
-                    st.line_chart(df_hands, y="bb", x="id", height=300)
+                    c4.metric("Hero ID", hero_name if hero_name else "Unknown")
 
                 with tab2:
                     st.subheader("賽事總結與建議")
