@@ -57,25 +57,28 @@ def load_content(uploaded_file):
     return None
 
 def parse_hands(content):
-    # [修正] 使用更聰明的 Regex 切割
-    # 這裡會抓取 "PokerStars" 開頭，直到 "Hand #數字:" 結束的標題
-    # 這樣無論是 Zoom, Home Game 還是錦標賽都能抓到
-    parts = re.split(r"(PokerStars.*?Hand #\d+:)", content)
+    # [通用格式] 支援 PokerStars 和 GGPoker
+    # 只要看到行首有 "Hand #" 或 "Poker Hand #" 就視為新的一手牌開始
+    # 使用 MULTILINE 模式，^ 會匹配每一行的開頭
+    parts = re.split(r'(^(?:Poker )?Hand #[^\n]+)', content, flags=re.MULTILINE)
     parsed_hands = []
     
-    # re.split 切出來會是 [空字串, 標題1, 內容1, 標題2, 內容2...]
-    # 所以我們從 1 開始，每次跳 2 格抓取一組
+    # re.split 切出來會是 [前導內容, 標題1, 內容1, 標題2, 內容2...]
+    # 從索引 1 開始，每次跳 2 格抓取一組 (標題 + 內容)
     for i in range(1, len(parts), 2):
         header = parts[i]
         body = parts[i+1] if i+1 < len(parts) else ""
         
         full_hand_text = header + body
         
-        if not full_hand_text.strip():
+        # 跳過空白或過短的手牌
+        if not full_hand_text.strip() or len(full_hand_text) < 50:
             continue
             
-        # 提取手牌編號 (直接從標題抓)
-        hand_id_match = re.search(r"Hand #(\d+):", header)
+        # 提取手牌編號 (支援多種格式)
+        # GGPoker: "Poker Hand #TM123456:" 或 "Hand #TM123456:"
+        # PokerStars: "Hand #123456:"
+        hand_id_match = re.search(r'Hand #([A-Z]*\d+)', header)
         hand_id = hand_id_match.group(1) if hand_id_match else f"Unknown-{i}"
         
         # 模擬數據 (之後這裡會接真實分析)
