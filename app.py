@@ -106,6 +106,52 @@ def cards_to_emoji(cards_str):
     
     return " ".join(emoji_cards)
 
+# 花色對應（與 cards_to_emoji 一致，供 parse_hands 產出 hero_cards_emoji）
+SUIT_EMOJI = {'c': '♣️', 's': '♠️', 'h': '♥️', 'd': '♦️'}
+
+def calculate_position(hero_seat, button_seat, total_seats):
+    """
+    依數學定義計算 Hero 位置（順時針距離 Button）。
+    輸入：hero_seat (int), button_seat (int), total_seats (list of int，本局有牌玩家座位號)。
+    回傳：位置字串 BTN, SB, BB, UTG, UTG+1, MP, HJ, CO 等。
+    """
+    if not total_seats or hero_seat is None or button_seat is None:
+        return "Other"
+    try:
+        hero_seat = int(hero_seat)
+        button_seat = int(button_seat)
+        total_seats = sorted([int(s) for s in total_seats])
+    except (TypeError, ValueError):
+        return "Other"
+    
+    if hero_seat not in total_seats or button_seat not in total_seats:
+        return "Other"
+    
+    n = len(total_seats)
+    button_idx = total_seats.index(button_seat)
+    hero_idx = total_seats.index(hero_seat)
+    # 順時針距離：Button=0, 下一位=1(SB), 再下=2(BB), ...
+    distance = (hero_idx - button_idx + n) % n
+    
+    # 位置對照：0=BTN, 1=SB, 2=BB, 3=UTG, 倒數第1=CO, 倒數第2=HJ, 其餘 UTG+1/MP
+    if distance == 0:
+        return "BTN"
+    if distance == 1:
+        return "SB"
+    if distance == 2:
+        return "BB"
+    if distance == 3:
+        return "UTG"
+    if distance == n - 1:
+        return "CO"
+    if distance == n - 2:
+        return "HJ"
+    if distance == 4:
+        return "UTG+1"
+    if distance >= 5 and distance <= n - 3:
+        return "MP"
+    return "Other"
+
 def parse_hands(content):
     """
     專為 GGPoker 格式設計的手牌解析器
@@ -189,19 +235,24 @@ def parse_hands(content):
         pot_match = re.search(r"Total pot ([\d,]+)", full_hand_text)
         pot_size = int(pot_match.group(1).replace(",", "")) if pot_match else 0
         
-        # 8. 精準抓取位置與座位 (Button / SB / BB / Other)
+        # 8. 精準抓取座位並用數學計算位置
         button_match = re.search(r"Seat #(\d+) is the button", full_hand_text)
-        button_seat = button_match.group(1) if button_match else None
+        button_seat = int(button_match.group(1)) if button_match else None
+        active_seats = list(set(int(m.group(1)) for m in re.finditer(r"Seat (\d+): .+ in chips", full_hand_text)))
         hero_seat_match = re.search(rf"Seat (\d+): {re.escape(current_hero)}\s", full_hand_text)
-        hero_seat = hero_seat_match.group(1) if hero_seat_match else None
+        hero_seat = int(hero_seat_match.group(1)) if hero_seat_match else None
+        hero_position = calculate_position(hero_seat, button_seat, active_seats)
         
-        position = "Other"
-        if hero_seat and button_seat and hero_seat == button_seat:
-            position = "BTN"
-        elif re.search(rf"^{re.escape(current_hero)}: posts small blind", preflop_text, re.MULTILINE):
-            position = "SB"
-        elif re.search(rf"^{re.escape(current_hero)}: posts big blind", preflop_text, re.MULTILINE):
-            position = "BB"
+        # 9. 花色解析：用 Python 字典產出 hero_cards_emoji，存入字典供 AI 使用
+        hero_cards_emoji = "Unknown"
+        if hero_cards:
+            parts = hero_cards.split()
+            emoji_parts = []
+            for card in parts:
+                if len(card) >= 2:
+                    rank, suit = card[:-1], card[-1].lower()
+                    emoji_parts.append(f"{rank}{SUIT_EMOJI.get(suit, suit)}")
+            hero_cards_emoji = " ".join(emoji_parts) if emoji_parts else "Unknown"
         
         parsed_hands.append({
             "id": hand_id,
@@ -211,10 +262,11 @@ def parse_hands(content):
             "bb": bb_count,
             "hero": current_hero,
             "hero_cards": hero_cards,
+            "hero_cards_emoji": hero_cards_emoji,
             "is_suited": is_suited,
             "hand_type": hand_type,
             "pot_size": pot_size,
-            "position": position
+            "position": hero_position
         })
     
     return parsed_hands, detected_hero
@@ -280,21 +332,21 @@ def generate_match_summary(hands_data, vpip, pfr, api_key, model):
 
 def analyze_specific_hand(hand_data, api_key, model):
     """
-    傳入完整 hand_data 字典，以事實注入 (Fact Sheet) 抗幻覺。
+    傳入完整 hand_data（含 hero_cards_emoji、position），以事實注入抗幻覺。
     """
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
     
-    # 事實區塊：用程式算好的數據，防止 AI 看錯花色或位置
-    hero_cards_emoji = cards_to_emoji(hand_data.get("hero_cards"))
-    position = hand_data.get("position", "Other")
+    # 強制使用 parse 階段算好的數據，禁止 AI 自行解析花色或位置
+    hero_cards_emoji = hand_data.get("hero_cards_emoji") or cards_to_emoji(hand_data.get("hero_cards"))
+    hero_position = hand_data.get("position", "Other")
     bb_count = hand_data.get("bb", 0)
     
-    fact_sheet = f"""【🔍 牌局事實 (Fact Sheet)】以下為程式解析結果，請以之為準。
-- Hero 手牌：{hero_cards_emoji}
-- 位置：{position}
+    fact_sheet = f"""【🔍 牌局事實 (Fact Sheet)】以下為程式運算結果，你必須以此為準，不得重新解讀。
+- Hero 手牌：{hero_cards_emoji}（嚴禁自行解析文本中的花色，必須使用此欄位）
+- Hero 位置：{hero_position}（若與你從文本判斷的結果衝突，以此欄位為準）
 - 籌碼量：{bb_count} BB
 
-請基於上述事實進行分析。若原始手牌紀錄內容與上述事實衝突，以本事實區塊為準。"""
+你必須基於上述 Fact Sheet 進行分析，不要重新解讀文本中的花色或位置。"""
     
     hand_content = hand_data.get("content", "")
     
@@ -387,7 +439,12 @@ else:
                     with col_detail:
                         hand_data = hands[selected_index]
                         
-                        # AI 分析按鈕（傳入完整 hand_data，含事實注入抗幻覺）
+                        # 系統判定摘要（讓使用者確認位置與手牌無誤）
+                        sys_position = hand_data.get("position", "Other")
+                        sys_cards = hand_data.get("hero_cards_emoji") or cards_to_emoji(hand_data.get("hero_cards"))
+                        st.caption(f"📍 **系統判定**：位置 {sys_position} | 手牌 {sys_cards}")
+                        
+                        # AI 分析按鈕（傳入完整 hand_data，含 hero_position、hero_cards_emoji）
                         if st.button(f"🤖 AI 分析這手牌", key="analyze_btn", use_container_width=True):
                             with st.spinner("AI 正在分析這手牌..."):
                                 analysis = analyze_specific_hand(hand_data, api_key, selected_model)
