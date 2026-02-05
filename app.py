@@ -547,20 +547,20 @@ else:
                     col_list, col_detail = st.columns([1, 2])
                     
                     with col_list:
-                        # 篩選器：縮小列表範圍，方便查找
-                        filter_choice = st.radio(
-                            "篩選",
+                        # 篩選器：縮小列表範圍，方便查找（下拉選單節省版面）
+                        filter_option = st.selectbox(
+                            "🔍 篩選手牌類型",
                             ["全部手牌", "💥 主動入池 (VPIP)", "🏆 獲勝手牌", "💸 落敗檢討", "🔥 大底池 (>20BB)"],
-                            horizontal=True,
+                            index=0,
                             key="hand_filter"
                         )
-                        if filter_choice == "全部手牌":
+                        if filter_option == "全部手牌":
                             filtered_hands = hands
-                        elif filter_choice == "💥 主動入池 (VPIP)":
+                        elif filter_option == "💥 主動入池 (VPIP)":
                             filtered_hands = [h for h in hands if h.get("vpip")]
-                        elif filter_choice == "🏆 獲勝手牌":
+                        elif filter_option == "🏆 獲勝手牌":
                             filtered_hands = [h for h in hands if h.get("result") == "win"]
-                        elif filter_choice == "💸 落敗檢討":
+                        elif filter_option == "💸 落敗檢討":
                             filtered_hands = [h for h in hands if h.get("result") == "loss"]
                         else:  # 大底池 (>20BB)
                             bb_size_default = 1
