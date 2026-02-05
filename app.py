@@ -363,7 +363,8 @@ def analyze_specific_hand(hand_data, api_key, model):
 【核心分析邏輯 - 必須包含】
 1. **範圍對抗 (Range vs Range)**：不要只看結果。必須推測「對手在該位置的範圍」與「Hero 的感知範圍」。例如：這張轉牌對誰更有利？對手範圍裡有多少空氣牌？
 2. **EV 思維**：針對關鍵決策點，分析這樣打長期的期望值 (EV) 是正還是負。
-3. **20BB 以下推棄 (Push/Fold)**：對於 20BB 以下的 all-in 或 fold 決策，請嚴格參照標準 Nash Equilibrium 圖表。若為邊緣牌型（Mixed Strategy），請明確指出「這是一個高波動的邊緣決策」，不要單純說好或壞。
+3. **價值下注原則 (Value Betting)**：當 Hero 持有強牌（如三條 Set、兩對、順子）時，除非牌面極度兇險（如完成 4 張同花或 4 張順子），否則應支持 Hero 進行價值下注。不要因為牌面有一張高牌（如 River 發出 A）就過度恐慌建議過牌。若對手範圍內有足夠多的差牌 (Worse Hands) 會跟注，那麼下注就是 +EV 的。
+4. **20BB 以下推棄 (Push/Fold)**：對於 20BB 以下的 all-in 或 fold 決策，請嚴格參照標準 Nash Equilibrium 圖表。若為邊緣牌型（Mixed Strategy），請明確指出「這是一個高波動的邊緣決策」，不要單純說好或壞。
 
 {fact_sheet}
 
@@ -375,6 +376,7 @@ def analyze_specific_hand(hand_data, api_key, model):
 ---
 
 【輸出格式 - 嚴格遵守】
+0. **【最高優先級】撲克牌 Emoji 化**：在輸出的所有文字中，提到撲克牌時必須使用 Emoji 格式。例如：'Ts' 寫成 T♠️，'7d' 寫成 7♦️，'Ah' 寫成 A♥️，'Kc' 寫成 K♣️。嚴禁直接輸出純文字卡片代碼（如 Ts、Ah）。
 1. **第一行起**：只寫教練的總結評價（狠評），一句話即可。不要加任何標題、不要加 Markdown 符號（如 ## 或 >）。
 2. **狠評結束後**：強制換行，然後單獨一行寫入分隔符號：===SPLIT===
 3. **分隔符號之後**：才是 Markdown 詳細分析，包含以下章節，區塊之間用 --- 分隔：
@@ -392,7 +394,7 @@ def analyze_specific_hand(hand_data, api_key, model):
     
     payload = {
         "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {"temperature": 0.1}
+        "generationConfig": {"temperature": 0.2}
     }
     try:
         resp = requests.post(url, headers={'Content-Type': 'application/json'}, data=json.dumps(payload))
