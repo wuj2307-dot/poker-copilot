@@ -49,6 +49,17 @@ st.markdown("""
     div[data-testid="stMetricDelta"] {
         font-size: 12px;
     }
+    
+    /* 優化引用區塊 (Blockquote) 樣式 - 用於顯示教練狠評 */
+    blockquote {
+        background-color: #1e2130;
+        border-left: 5px solid #ff4b4b;
+        padding: 15px;
+        border-radius: 5px;
+        color: #e0e0e0;
+        font-size: 16px;
+        margin: 20px 0;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -359,17 +370,20 @@ def analyze_specific_hand(hand_data, api_key, model):
 
 ---
 
-【輸出格式】請用 Markdown 撰寫，且**不要**在開頭重複牌局事實清單，直接進入以下三個區塊：
+【輸出格式】請用 Markdown 撰寫，**不要**在開頭重複牌局事實清單，直接進入以下三個區塊。區塊之間請插入分隔線 (---)。
 
-## 🏆 教練評分
-給出 0～100 的分數，並用一句話狠評這手牌的整體表現。
+1. **🦁 教練狠評 (Verdict)** — 必須放在最開頭  
+   用一句話給出這手牌的核心評價。**整段內容必須用 Markdown 引用區塊包覆**（即每行以 > 開頭），例如：
+   > 兄弟，這手牌在轉牌這裡打得有點貪心，**EV** 上你是在送錢。
 
-## 🧐 關鍵局勢解讀
-- **Pre-flop**：簡評這手起手牌在 {hero_position} 的可玩性。
-- **Flop / Turn / River**：針對有動作的街 (Street) 做深度分析，重點放在「為什麼」而不是「發生了什麼」。結合範圍與 EV 思維。
+2. **🧐 關鍵局勢解讀**  
+   - **Pre-flop**：簡評這手起手牌在 {hero_position} 的可玩性（可用列點）。  
+   - **Flop / Turn / River**：針對有動作的街做深度分析，重點在「為什麼」；提到 **Range**、**EV**、**GTO**、**C-bet** 等概念時請用粗體標示。盡量用列點呈現，避免長篇段落。
 
-## 💡 漏洞與建議
-指出 Hero 思維上的潛在漏洞（例如：是否太容易被詐唬？價值拿得太薄？），並給出 1～2 個具體可執行的建議。"""
+3. **💡 漏洞與建議**  
+   指出 Hero 思維上的潛在漏洞（如太容易被詐唬、價值拿太薄），並給 1～2 個具體建議。可用列點。
+
+【視覺要求】三個大區塊之間必須插入 --- 分隔線；關鍵概念用 **粗體**；分析細節盡量用列點，增加閱讀通透感。"""
     
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
     try:
