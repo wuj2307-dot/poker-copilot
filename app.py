@@ -162,6 +162,19 @@ def calculate_position(hero_seat, button_seat, total_seats):
         return "MP"
     return "Other"
 
+def distance_to_button(seat, button_seat, total_seats):
+    """
+    順時針距離 Button 的步數（0=BTN, 1=SB, 2=BB, ...）。
+    用於比較相對位置：距離較小者翻後先行動較晚 → In Position。
+    """
+    if not total_seats or seat is None or button_seat is None or seat not in total_seats or button_seat not in total_seats:
+        return None
+    sorted_seats = sorted([int(s) for s in total_seats])
+    n = len(sorted_seats)
+    btn_idx = sorted_seats.index(int(button_seat))
+    seat_idx = sorted_seats.index(int(seat))
+    return (seat_idx - btn_idx) % n
+
 def parse_hands(content):
     """
     專為 GGPoker 格式設計的手牌解析器
@@ -253,6 +266,42 @@ def parse_hands(content):
         active_seats = list(set(int(m.group(1)) for m in re.finditer(r"Seat (\d+): .+ in chips", full_hand_text)))
         hero_position_str = calculate_position(hero_seat, button_seat, active_seats)
         
+        # 8b. 主要對手 (Main Villain) 與相對位置 (IP/OOP)
+        villain_seat = None
+        relative_pos_str = "N/A"
+        m_raise = re.search(r"(\S+): raises", preflop_text)
+        m_bet = re.search(r"(\S+): bets", preflop_text)
+        villain_name = None
+        if m_raise and m_bet:
+            villain_name = m_raise.group(1) if m_raise.start() < m_bet.start() else m_bet.group(1)
+        elif m_raise:
+            villain_name = m_raise.group(1)
+        elif m_bet:
+            villain_name = m_bet.group(1)
+        if villain_name:
+            if villain_name == current_hero:
+                relative_pos_str = "Hero 為翻前加注者 (無單一主要對手)"
+            else:
+                villain_seat_m = re.search(rf"Seat (\d+): {re.escape(villain_name)}\s", full_hand_text)
+                if villain_seat_m and active_seats:
+                    villain_seat = int(villain_seat_m.group(1))
+                    if villain_seat in active_seats:
+                        hero_dist = distance_to_button(hero_seat, button_seat, active_seats)
+                        villain_dist = distance_to_button(villain_seat, button_seat, active_seats)
+                        if hero_dist is not None and villain_dist is not None:
+                            if hero_dist < villain_dist:
+                                relative_pos_str = "In Position (IP)"
+                            elif hero_dist > villain_dist:
+                                relative_pos_str = "Out of Position (OOP)"
+                            else:
+                                relative_pos_str = "N/A (與主要對手同序)"
+                    else:
+                        relative_pos_str = "N/A (無法判定主要對手座位)"
+                else:
+                    relative_pos_str = "N/A (無法判定主要對手座位)"
+        else:
+            relative_pos_str = "多路底池 (無人加注)"
+        
         # 9. 花色轉換：c=♣️, s=♠️, h=♥️, d=♦️，直接產出 hero_cards_emoji 存入字典
         hero_cards_emoji = "Unknown"
         if hero_cards:
@@ -272,7 +321,9 @@ def parse_hands(content):
             "is_suited": is_suited,
             "hand_type": hand_type,
             "pot_size": pot_size,
-            "position": hero_position_str
+            "position": hero_position_str,
+            "villain_seat": villain_seat,
+            "relative_pos_str": relative_pos_str,
         })
     
     return parsed_hands, detected_hero
@@ -349,13 +400,17 @@ def analyze_specific_hand(hand_data, api_key, model):
     hero_position = hand_data.get("position", "Other")
     bb_count = hand_data.get("bb", 0)
     display_index = hand_data.get("display_index", "?")
+    relative_pos_str = hand_data.get("relative_pos_str", "N/A")
     
     fact_sheet = f"""【系統判定事實 - 分析基準，請嚴格遵守】
 - Hero 手牌: {hero_cards_emoji}
 - Hero 位置: {hero_position}
 - 籌碼量: {bb_count} BB
-若原始文本與上述衝突，以上述為準。輸出時請勿重複列出此清單，直接進入分析。"""
-    
+- 相對位置優劣: {relative_pos_str} (針對主要對手)
+若原始文本與上述衝突，以上述為準。輸出時請勿重複列出此清單，直接進入分析。
+
+**相對位置思考限制**：你必須基於上述的「相對位置優劣」進行分析，嚴禁自行推斷 Hero 是 IP 還是 OOP。若 Hero 處於 **In Position (IP)**，請傾向於建議更寬的跟注 (Call) 或浮打 (Float) 範圍；若 **Out of Position (OOP)**，則建議更緊的防守。勿出現「CO vs UTG+1 是不利位置」等與系統事實矛盾的結論。**"""
+
     hand_content = hand_data.get("content", "")
     
     prompt = f"""你是 Hero 的專屬教練，也是一位說話直率的戰友。語氣要專業、銳利，但帶有溫度。禁止使用機器人口吻（如「根據數據顯示…」「總結如下…」），改用自然的教練口吻（如「兄弟，這裡你的範圍太強了…」「這手牌打得有點貪心…」）。
