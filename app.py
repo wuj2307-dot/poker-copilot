@@ -168,6 +168,23 @@ def parse_hands(content):
         if re.search(pfr_pattern, full_hand_text, re.MULTILINE):
             is_pfr = True
         
+        # 6. 手牌花色與牌型 (修復同花誤判)
+        is_suited = False
+        hand_type = None
+        if hero_cards:
+            cards = hero_cards.split()
+            if len(cards) >= 2:
+                suit1 = cards[0][-1].lower()
+                suit2 = cards[1][-1].lower()
+                is_suited = (suit1 == suit2)
+                rank_order = "AKQJT98765432"
+                r1, r2 = cards[0][:-1].upper(), cards[1][:-1].upper()
+                if r1 not in rank_order or r2 not in rank_order:
+                    hand_type = f"{r1}{r2}{'s' if is_suited else 'o'}"
+                else:
+                    high, low = (r1, r2) if rank_order.index(r1) < rank_order.index(r2) else (r2, r1)
+                    hand_type = f"{high}{low}{'s' if is_suited else 'o'}"
+        
         parsed_hands.append({
             "id": hand_id,
             "content": full_hand_text,
@@ -175,14 +192,53 @@ def parse_hands(content):
             "pfr": is_pfr,
             "bb": bb_count,
             "hero": current_hero,
-            "hero_cards": hero_cards
+            "hero_cards": hero_cards,
+            "is_suited": is_suited,
+            "hand_type": hand_type
         })
     
     return parsed_hands, detected_hero
 
 def generate_match_summary(hands_data, vpip, pfr, api_key, model):
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
-    prompt = f"你是一個撲克教練。請簡短分析數據：VPIP {vpip}%, PFR {pfr}%, 手牌數 {len(hands_data)}。給出3點建議。"
+    
+    # 關鍵手牌篩選：只取 Hero 有主動動作 (vpip=True) 的手牌
+    key_hands_raw = [h for h in hands_data if h.get("vpip")]
+    
+    # 若有 bb 籌碼量，優先挑選籌碼量最大的 5~8 手（深籌碼對決）；否則依序取前 8 手
+    if key_hands_raw and key_hands_raw[0].get("bb") is not None and key_hands_raw[0].get("bb", 0) > 0:
+        key_hands_raw.sort(key=lambda h: h.get("bb", 0), reverse=True)
+        key_hands = key_hands_raw[:8]
+    else:
+        key_hands = key_hands_raw[:8]
+    
+    # 組關鍵手牌描述：每手強制標註 (Suited) 或 (Offsuit)
+    key_hands_lines = []
+    for i, h in enumerate(key_hands, 1):
+        ht = h.get("hand_type") or "??"
+        suited_label = "(Suited)" if h.get("is_suited") else "(Offsuit)"
+        bb_info = f", {h.get('bb')} BB" if h.get("bb") else ""
+        key_hands_lines.append(f"【關鍵手牌 {i}】{ht} {suited_label}{bb_info}\n{h.get('content', '')[:800]}")
+    
+    key_hands_text = "\n\n---\n\n".join(key_hands_lines) if key_hands_lines else "（無 VPIP 手牌）"
+    
+    prompt = f"""你是一個撲克教練。請根據以下數據與關鍵手牌，寫一份賽事報告。
+
+【整體數據】
+- 總手牌數: {len(hands_data)}
+- VPIP: {vpip}%
+- PFR: {pfr}%
+
+【關鍵手牌】
+以下手牌皆已標註 (Suited) 或 (Offsuit)，請依此解讀，勿自行猜測花色。
+
+{key_hands_text}
+
+【報告要求】
+1. 簡短總結風格與數據解讀。
+2. 必須包含「🔍 關鍵手牌覆盤」章節：針對上述關鍵手牌逐手或擇要點評 Hero 的決策是否合理。
+3. 給出 3 點具體改進建議。"""
+    
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
     try:
         resp = requests.post(url, headers={'Content-Type': 'application/json'}, data=json.dumps(payload))
