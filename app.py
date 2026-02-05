@@ -150,25 +150,25 @@ def parse_hands(content):
         hero_chips = int(stack_match.group(1).replace(",", "")) if stack_match else 0
         bb_count = round(hero_chips / bb_size, 1) if bb_size > 0 else 0
         
-        # 5. 計算 VPIP/PFR (嚴格只看 Hero 的主動動作)
-        # 排除盲注投入：posts small blind / posts big blind / posts the ante
+        # 5. 計算 VPIP/PFR（僅翻牌前 Pre-flop）
+        # 以 "*** FLOP ***" 切割，只對第一部分做匹配，避免翻後動作誤算
+        preflop_text = full_hand_text.split("*** FLOP ***")[0] if "*** FLOP ***" in full_hand_text else full_hand_text
+        
         is_vpip = False
         is_pfr = False
-        
         hero_escaped = re.escape(current_hero)
         
-        # VPIP: Hero 有 raises / calls / bets (排除 posts)
-        # 格式: "Hero: raises 31,803" 或 "Hero: calls 1,600"
+        # VPIP: 翻牌前 Hero 有 raises / calls / bets（排除 posts）
         vpip_pattern = rf"^{hero_escaped}: (raises|calls|bets)"
-        if re.search(vpip_pattern, full_hand_text, re.MULTILINE):
+        if re.search(vpip_pattern, preflop_text, re.MULTILINE):
             is_vpip = True
         
-        # PFR: Hero 有 raises
+        # PFR: 翻牌前 Hero 有 raises
         pfr_pattern = rf"^{hero_escaped}: raises"
-        if re.search(pfr_pattern, full_hand_text, re.MULTILINE):
+        if re.search(pfr_pattern, preflop_text, re.MULTILINE):
             is_pfr = True
         
-        # 6. 手牌花色與牌型 (修復同花誤判)
+        # 6. 手牌花色與牌型（同花判定：兩張牌最後一字元相同則 is_suited=True）
         is_suited = False
         hand_type = None
         if hero_cards:
@@ -202,17 +202,14 @@ def parse_hands(content):
 def generate_match_summary(hands_data, vpip, pfr, api_key, model):
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
     
-    # 關鍵手牌篩選：只取 Hero 有主動動作 (vpip=True) 的手牌
+    # 關鍵手牌篩選：只取 vpip == True 的手牌
     key_hands_raw = [h for h in hands_data if h.get("vpip")]
     
-    # 若有 bb 籌碼量，優先挑選籌碼量最大的 5~8 手（深籌碼對決）；否則依序取前 8 手
-    if key_hands_raw and key_hands_raw[0].get("bb") is not None and key_hands_raw[0].get("bb", 0) > 0:
-        key_hands_raw.sort(key=lambda h: h.get("bb", 0), reverse=True)
-        key_hands = key_hands_raw[:8]
-    else:
-        key_hands = key_hands_raw[:8]
+    # 依 bb（籌碼量）由大到小排序，取前 5 手（優先分析深籌碼關鍵局）
+    key_hands_raw.sort(key=lambda h: h.get("bb", 0), reverse=True)
+    key_hands = key_hands_raw[:5]
     
-    # 組關鍵手牌描述：每手強制標註 (Suited) 或 (Offsuit)
+    # 組關鍵手牌描述：每手強制標註 (Suited) 或 (Offsuit)，防止 AI 看錯花色
     key_hands_lines = []
     for i, h in enumerate(key_hands, 1):
         ht = h.get("hand_type") or "??"
