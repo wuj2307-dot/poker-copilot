@@ -336,25 +336,40 @@ def analyze_specific_hand(hand_data, api_key, model):
     bb_count = hand_data.get("bb", 0)
     display_index = hand_data.get("display_index", "?")
     
-    fact_sheet = f"""【🔍 牌局事實 (System Facts)】請嚴格遵守。
-
-【系統判定事實 - 請嚴格遵守】
-- Hero 手牌: {hero_cards_emoji}（請直接使用此 Emoji，勿自行翻譯花色）
-- Hero 位置: {hero_position}（這是系統計算的精確位置，以此為準）
+    fact_sheet = f"""【系統判定事實 - 分析基準，請嚴格遵守】
+- Hero 手牌: {hero_cards_emoji}
+- Hero 位置: {hero_position}
 - 籌碼量: {bb_count} BB
-
-若原始文本與上述事實衝突，以上述事實為準。分析時請引用「Hand #{display_index}」。"""
+若原始文本與上述衝突，以上述為準。輸出時請勿重複列出此清單，直接進入分析。"""
     
     hand_content = hand_data.get("content", "")
     
-    prompt = f"""你是撲克教練。請分析這手牌，指出 Hero（主角）的決策是否正確。
+    prompt = f"""你是 Hero 的專屬教練，也是一位說話直率的戰友。語氣要專業、銳利，但帶有溫度。禁止使用機器人口吻（如「根據數據顯示…」「總結如下…」），改用自然的教練口吻（如「兄弟，這裡你的範圍太強了…」「這手牌打得有點貪心…」）。
+
+【核心分析邏輯 - 必須包含】
+1. **範圍對抗 (Range vs Range)**：不要只看結果。必須推測「對手在該位置的範圍」與「Hero 的感知範圍」。例如：這張轉牌對誰更有利？對手範圍裡有多少空氣牌？
+2. **EV 思維**：針對關鍵決策點，分析這樣打長期的期望值 (EV) 是正還是負。
 
 {fact_sheet}
 
 ---
 
 【原始手牌紀錄】
-{hand_content}"""
+{hand_content}
+
+---
+
+【輸出格式】請用 Markdown 撰寫，且**不要**在開頭重複牌局事實清單，直接進入以下三個區塊：
+
+## 🏆 教練評分
+給出 0～100 的分數，並用一句話狠評這手牌的整體表現。
+
+## 🧐 關鍵局勢解讀
+- **Pre-flop**：簡評這手起手牌在 {hero_position} 的可玩性。
+- **Flop / Turn / River**：針對有動作的街 (Street) 做深度分析，重點放在「為什麼」而不是「發生了什麼」。結合範圍與 EV 思維。
+
+## 💡 漏洞與建議
+指出 Hero 思維上的潛在漏洞（例如：是否太容易被詐唬？價值拿得太薄？），並給出 1～2 個具體可執行的建議。"""
     
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
     try:
