@@ -365,6 +365,7 @@ def analyze_specific_hand(hand_data, api_key, model):
 2. **EV 思維**：針對關鍵決策點，分析這樣打長期的期望值 (EV) 是正還是負。
 3. **價值下注原則 (Value Betting)**：當 Hero 持有強牌（如三條 Set、兩對、順子）時，除非牌面極度兇險（如完成 4 張同花或 4 張順子），否則應支持 Hero 進行價值下注。不要因為牌面有一張高牌（如 River 發出 A）就過度恐慌建議過牌。若對手範圍內有足夠多的差牌 (Worse Hands) 會跟注，那麼下注就是 +EV 的。
 4. **20BB 以下推棄 (Push/Fold)**：對於 20BB 以下的 all-in 或 fold 決策，請嚴格參照標準 Nash Equilibrium 圖表。若為邊緣牌型（Mixed Strategy），請明確指出「這是一個高波動的邊緣決策」，不要單純說好或壞。
+5. **中等籌碼例外 (20～35BB)**：若 Hero 持有 **88～QQ** 或 **AK / AQs**，籌碼在 20～35BB，面對**單一加注者 (Open Raise)** 選擇全下 (Re-shove)，這是為了死錢 (Dead Money) 與棄牌率 (Fold Equity) 的**標準擠壓 (Standard Squeeze)** 打法。此時**不要**稱之為「高波動邊緣決策」，應肯定為「標準且強勢的擠壓打法」，稱讚 Hero 敢於在翻前結束戰鬥。我們不追求完美 GTO，但對這類 +EV 的標準推牌，**勿使用負面或過度謹慎的詞彙**（如「風險不小」「運氣好」），應正面評價。
 
 {fact_sheet}
 
