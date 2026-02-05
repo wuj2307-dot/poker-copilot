@@ -440,6 +440,9 @@ def analyze_specific_hand(hand_data, api_key, model):
 - **EV 思維**：針對關鍵決策點，說明長期期望值 (EV) 是正或負。
 - **20BB 以下**：對於 20BB 以下的 all-in/fold，參照 Nash 圖表；若為邊緣牌型 (Mixed Strategy)，可指出「高波動邊緣決策」。
 
+**衝突裁決 (CRITICAL)**：
+判斷必須嚴格遵守層級 (Hierarchy)。若手牌符合「第二優先級：尷尬籌碼警告」，你**必須**給出保守建議（棄牌或平跟）。**嚴禁**使用後面的「通用原則」（如 EV、底池賠率、賞金因素）來推翻「尷尬籌碼」的結論。在 30-50BB 區間，除非是頂級強牌 (JJ+, AK)，否則風險控制永遠優先於邊緣 EV。
+
 {fact_sheet}
 
 ---
@@ -468,7 +471,7 @@ def analyze_specific_hand(hand_data, api_key, model):
     
     payload = {
         "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {"temperature": 0.2}
+        "generationConfig": {"temperature": 0.0}
     }
     try:
         resp = requests.post(url, headers={'Content-Type': 'application/json'}, data=json.dumps(payload))
