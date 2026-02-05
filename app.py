@@ -189,6 +189,20 @@ def parse_hands(content):
         pot_match = re.search(r"Total pot ([\d,]+)", full_hand_text)
         pot_size = int(pot_match.group(1).replace(",", "")) if pot_match else 0
         
+        # 8. 精準抓取位置與座位 (Button / SB / BB / Other)
+        button_match = re.search(r"Seat #(\d+) is the button", full_hand_text)
+        button_seat = button_match.group(1) if button_match else None
+        hero_seat_match = re.search(rf"Seat (\d+): {re.escape(current_hero)}\s", full_hand_text)
+        hero_seat = hero_seat_match.group(1) if hero_seat_match else None
+        
+        position = "Other"
+        if hero_seat and button_seat and hero_seat == button_seat:
+            position = "BTN"
+        elif re.search(rf"^{re.escape(current_hero)}: posts small blind", preflop_text, re.MULTILINE):
+            position = "SB"
+        elif re.search(rf"^{re.escape(current_hero)}: posts big blind", preflop_text, re.MULTILINE):
+            position = "BB"
+        
         parsed_hands.append({
             "id": hand_id,
             "content": full_hand_text,
@@ -199,7 +213,8 @@ def parse_hands(content):
             "hero_cards": hero_cards,
             "is_suited": is_suited,
             "hand_type": hand_type,
-            "pot_size": pot_size
+            "pot_size": pot_size,
+            "position": position
         })
     
     return parsed_hands, detected_hero
@@ -263,9 +278,35 @@ def generate_match_summary(hands_data, vpip, pfr, api_key, model):
     except:
         return "AI 連線失敗，請檢查 API Key 或稍後再試。"
 
-def analyze_specific_hand(hand_content, api_key, model):
+def analyze_specific_hand(hand_data, api_key, model):
+    """
+    傳入完整 hand_data 字典，以事實注入 (Fact Sheet) 抗幻覺。
+    """
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
-    prompt = f"你是撲克教練。請分析這手牌，指出 Hero (主角) 的決策是否正確：\n\n{hand_content}"
+    
+    # 事實區塊：用程式算好的數據，防止 AI 看錯花色或位置
+    hero_cards_emoji = cards_to_emoji(hand_data.get("hero_cards"))
+    position = hand_data.get("position", "Other")
+    bb_count = hand_data.get("bb", 0)
+    
+    fact_sheet = f"""【🔍 牌局事實 (Fact Sheet)】以下為程式解析結果，請以之為準。
+- Hero 手牌：{hero_cards_emoji}
+- 位置：{position}
+- 籌碼量：{bb_count} BB
+
+請基於上述事實進行分析。若原始手牌紀錄內容與上述事實衝突，以本事實區塊為準。"""
+    
+    hand_content = hand_data.get("content", "")
+    
+    prompt = f"""你是撲克教練。請分析這手牌，指出 Hero（主角）的決策是否正確。
+
+{fact_sheet}
+
+---
+
+【原始手牌紀錄】
+{hand_content}"""
+    
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
     try:
         resp = requests.post(url, headers={'Content-Type': 'application/json'}, data=json.dumps(payload))
@@ -346,10 +387,10 @@ else:
                     with col_detail:
                         hand_data = hands[selected_index]
                         
-                        # AI 分析按鈕
+                        # AI 分析按鈕（傳入完整 hand_data，含事實注入抗幻覺）
                         if st.button(f"🤖 AI 分析這手牌", key="analyze_btn", use_container_width=True):
                             with st.spinner("AI 正在分析這手牌..."):
-                                analysis = analyze_specific_hand(hand_data['content'], api_key, selected_model)
+                                analysis = analyze_specific_hand(hand_data, api_key, selected_model)
                                 st.markdown("### 💡 AI 分析結果")
                                 st.markdown(analysis)
                         else:
