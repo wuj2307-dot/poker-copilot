@@ -329,7 +329,10 @@ def generate_match_summary(hands_data, vpip, pfr, api_key, model):
 ## 💡 下場比賽調整
 給出 1～2 個具體可執行的建議。"""
     
-    payload = {"contents": [{"parts": [{"text": prompt}]}]}
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {"temperature": 0.1}
+    }
     try:
         resp = requests.post(url, headers={'Content-Type': 'application/json'}, data=json.dumps(payload))
         return resp.json()['candidates'][0]['content']['parts'][0]['text']
@@ -360,6 +363,7 @@ def analyze_specific_hand(hand_data, api_key, model):
 【核心分析邏輯 - 必須包含】
 1. **範圍對抗 (Range vs Range)**：不要只看結果。必須推測「對手在該位置的範圍」與「Hero 的感知範圍」。例如：這張轉牌對誰更有利？對手範圍裡有多少空氣牌？
 2. **EV 思維**：針對關鍵決策點，分析這樣打長期的期望值 (EV) 是正還是負。
+3. **20BB 以下推棄 (Push/Fold)**：對於 20BB 以下的 all-in 或 fold 決策，請嚴格參照標準 Nash Equilibrium 圖表。若為邊緣牌型（Mixed Strategy），請明確指出「這是一個高波動的邊緣決策」，不要單純說好或壞。
 
 {fact_sheet}
 
@@ -370,25 +374,31 @@ def analyze_specific_hand(hand_data, api_key, model):
 
 ---
 
-【輸出格式】請用 Markdown 撰寫，**不要**在開頭重複牌局事實清單，直接進入以下三個區塊。區塊之間請插入分隔線 (---)。
+【輸出格式 - 嚴格遵守】
+1. **第一行起**：只寫教練的總結評價（狠評），一句話即可。不要加任何標題、不要加 Markdown 符號（如 ## 或 >）。
+2. **狠評結束後**：強制換行，然後單獨一行寫入分隔符號：===SPLIT===
+3. **分隔符號之後**：才是 Markdown 詳細分析，包含以下章節，區塊之間用 --- 分隔：
+   - **🧐 關鍵局勢解讀**：Pre-flop 可玩性；Flop/Turn/River 有動作的街，重點在「為什麼」。**Range**、**EV**、**GTO**、**C-bet** 等用粗體。盡量列點。
+   - **💡 漏洞與建議**：思維漏洞 + 1～2 個具體建議。
 
-1. **🦁 教練狠評 (Verdict)** — 必須放在最開頭  
-   用一句話給出這手牌的核心評價。**整段內容必須用 Markdown 引用區塊包覆**（即每行以 > 開頭），例如：
-   > 兄弟，這手牌在轉牌這裡打得有點貪心，**EV** 上你是在送錢。
-
-2. **🧐 關鍵局勢解讀**  
-   - **Pre-flop**：簡評這手起手牌在 {hero_position} 的可玩性（可用列點）。  
-   - **Flop / Turn / River**：針對有動作的街做深度分析，重點在「為什麼」；提到 **Range**、**EV**、**GTO**、**C-bet** 等概念時請用粗體標示。盡量用列點呈現，避免長篇段落。
-
-3. **💡 漏洞與建議**  
-   指出 Hero 思維上的潛在漏洞（如太容易被詐唬、價值拿太薄），並給 1～2 個具體建議。可用列點。
-
-【視覺要求】三個大區塊之間必須插入 --- 分隔線；關鍵概念用 **粗體**；分析細節盡量用列點，增加閱讀通透感。"""
+範例結構：
+兄弟，這手牌在轉牌這裡打得有點貪心，EV 上你是在送錢。
+===SPLIT===
+## 🧐 關鍵局勢解讀
+...
+---
+## 💡 漏洞與建議
+..."""
     
-    payload = {"contents": [{"parts": [{"text": prompt}]}]}
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {"temperature": 0.1}
+    }
     try:
         resp = requests.post(url, headers={'Content-Type': 'application/json'}, data=json.dumps(payload))
-        return resp.json()['candidates'][0]['content']['parts'][0]['text']
+        raw_text = resp.json()['candidates'][0]['content']['parts'][0]['text']
+        # 回傳原始文字，由呼叫端依 ===SPLIT=== 切分顯示
+        return raw_text
     except Exception as e:
         return f"分析失敗: {str(e)}"
 
@@ -470,12 +480,19 @@ else:
                         sys_cards = hand_data.get("hero_cards_emoji") or cards_to_emoji(hand_data.get("hero_cards"))
                         st.caption(f"📍 **系統判定**：位置 {sys_position} | 手牌 {sys_cards}")
                         
-                        # AI 分析按鈕（傳入完整 hand_data：hero_position、hero_cards_emoji、display_index）
+                        # AI 分析按鈕（傳入完整 hand_data；結果依 ===SPLIT=== 分離狠評與詳情）
                         if st.button(f"🤖 AI 分析這手牌", key="analyze_btn", use_container_width=True):
                             with st.spinner("AI 正在分析這手牌..."):
                                 analysis = analyze_specific_hand(hand_data, api_key, selected_model)
                                 st.markdown("### 💡 AI 分析結果")
-                                st.info(f"📍 **系統鎖定**：位置 {sys_position} | 手牌 {sys_cards}")
-                                st.markdown(analysis)
+                                st.caption(f"📍 **系統鎖定**：位置 {sys_position} | 手牌 {sys_cards}")
+                                parts = analysis.split("===SPLIT===")
+                                summary_text = parts[0].strip() if parts else ""
+                                detail_text = parts[1].strip() if len(parts) > 1 else ""
+                                if summary_text and detail_text:
+                                    st.info(summary_text, icon="🦁")
+                                    st.markdown(detail_text)
+                                else:
+                                    st.markdown(analysis)
                         else:
                             st.info("👆 點擊上方按鈕，讓 AI 分析這手牌的決策。")
