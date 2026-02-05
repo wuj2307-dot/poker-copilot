@@ -311,6 +311,15 @@ def parse_hands(content):
             emoji_parts = [f"{c[:-1]}{SUIT_EMOJI.get(c[-1].lower(), c[-1])}" for c in parts if len(c) >= 2]
             hero_cards_emoji = " ".join(emoji_parts) if emoji_parts else "Unknown"
         
+        # 10. 輸贏結果偵測（Hero collected / won / matches → win；有 VPIP 未贏 → loss；未入池 → fold）
+        hero_win_pattern = rf"{re.escape(current_hero)}\s+(collected|won|wins|matches)"
+        if re.search(hero_win_pattern, full_hand_text, re.IGNORECASE):
+            result = "win"
+        elif is_vpip:
+            result = "loss"
+        else:
+            result = "fold"
+        
         parsed_hands.append({
             "id": hand_id,
             "content": full_hand_text,
@@ -326,6 +335,8 @@ def parse_hands(content):
             "position": hero_position_str,
             "villain_seat": villain_seat,
             "relative_pos_str": relative_pos_str,
+            "result": result,
+            "bb_size": bb_size,
         })
     
     return parsed_hands, detected_hero
@@ -536,23 +547,44 @@ else:
                     col_list, col_detail = st.columns([1, 2])
                     
                     with col_list:
-                        # 優化手牌列表顯示：Hand #<display_index>: A♥️ K♠️（與 AI 報告編號一致）
-                        def format_hand_label(i):
-                            hand = hands[i]
-                            hand_num = hand.get("display_index", i + 1)
-                            cards_display = cards_to_emoji(hand.get('hero_cards'))
-                            return f"Hand #{hand_num}: {cards_display}"
-                        
-                        selected_index = st.radio(
-                            "選擇手牌", 
-                            range(len(hands)), 
-                            format_func=format_hand_label,
-                            key="hand_radio"
+                        # 篩選器：縮小列表範圍，方便查找
+                        filter_choice = st.radio(
+                            "篩選",
+                            ["全部手牌", "💥 主動入池 (VPIP)", "🏆 獲勝手牌", "💸 落敗檢討", "🔥 大底池 (>20BB)"],
+                            horizontal=True,
+                            key="hand_filter"
                         )
+                        if filter_choice == "全部手牌":
+                            filtered_hands = hands
+                        elif filter_choice == "💥 主動入池 (VPIP)":
+                            filtered_hands = [h for h in hands if h.get("vpip")]
+                        elif filter_choice == "🏆 獲勝手牌":
+                            filtered_hands = [h for h in hands if h.get("result") == "win"]
+                        elif filter_choice == "💸 落敗檢討":
+                            filtered_hands = [h for h in hands if h.get("result") == "loss"]
+                        else:  # 大底池 (>20BB)
+                            bb_size_default = 1
+                            filtered_hands = [h for h in hands if (h.get("bb_size") or bb_size_default) and (h.get("pot_size", 0) > 20 * (h.get("bb_size") or bb_size_default))]
+                        
+                        if not filtered_hands:
+                            st.info("此分類無手牌")
+                            hand_data = hands[0] if hands else {}
+                        else:
+                            def format_filtered_label(i):
+                                hand = filtered_hands[i]
+                                hand_num = hand.get("display_index", i + 1)
+                                cards_display = cards_to_emoji(hand.get("hero_cards"))
+                                return f"Hand #{hand_num}: {cards_display}"
+                            
+                            selected_index = st.radio(
+                                "選擇手牌",
+                                range(len(filtered_hands)),
+                                format_func=format_filtered_label,
+                                key="hand_radio"
+                            )
+                            hand_data = filtered_hands[selected_index]
                     
                     with col_detail:
-                        hand_data = hands[selected_index]
-                        
                         # 系統判定摘要（選牌時即顯示，讓使用者確認）
                         sys_position = hand_data.get("position", "Other")
                         sys_cards = hand_data.get("hero_cards_emoji") or cards_to_emoji(hand_data.get("hero_cards"))
