@@ -164,8 +164,8 @@ def calculate_position(hero_seat, button_seat, total_seats):
 
 def distance_to_button(seat, button_seat, total_seats):
     """
-    順時針距離 Button 的步數（0=BTN, 1=SB, 2=BB, ...）。
-    用於比較相對位置：距離較小者翻後先行動較晚 → In Position。
+    順時針距離 Button 的步數（0=BTN, 1=SB, 2=BB, 3=UTG, ...）。
+    翻後行動順序為 SB→BB→UTG→...→BTN，故數字越大代表動作越晚 → In Position。
     """
     if not total_seats or seat is None or button_seat is None or seat not in total_seats or button_seat not in total_seats:
         return None
@@ -289,12 +289,14 @@ def parse_hands(content):
                         hero_dist = distance_to_button(hero_seat, button_seat, active_seats)
                         villain_dist = distance_to_button(villain_seat, button_seat, active_seats)
                         if hero_dist is not None and villain_dist is not None:
-                            if hero_dist < villain_dist:
-                                relative_pos_str = "In Position (IP)"
+                            if hero_dist == 0:
+                                relative_pos_str = "In Position (IP)"  # Hero 是 Button
+                            elif villain_dist == 0:
+                                relative_pos_str = "Out of Position (OOP)"  # 對手是 Button
                             elif hero_dist > villain_dist:
-                                relative_pos_str = "Out of Position (OOP)"
+                                relative_pos_str = "In Position (IP)"  # Hero 距離更大 = 動作更晚
                             else:
-                                relative_pos_str = "N/A (與主要對手同序)"
+                                relative_pos_str = "Out of Position (OOP)"
                     else:
                         relative_pos_str = "N/A (無法判定主要對手座位)"
                 else:
