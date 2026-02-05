@@ -185,6 +185,10 @@ def parse_hands(content):
                     high, low = (r1, r2) if rank_order.index(r1) < rank_order.index(r2) else (r2, r1)
                     hand_type = f"{high}{low}{'s' if is_suited else 'o'}"
         
+        # 7. 抓取底池大小 (GGPoker 格式: "Total pot 1,250 | Rake 0")
+        pot_match = re.search(r"Total pot ([\d,]+)", full_hand_text)
+        pot_size = int(pot_match.group(1).replace(",", "")) if pot_match else 0
+        
         parsed_hands.append({
             "id": hand_id,
             "content": full_hand_text,
@@ -194,7 +198,8 @@ def parse_hands(content):
             "hero": current_hero,
             "hero_cards": hero_cards,
             "is_suited": is_suited,
-            "hand_type": hand_type
+            "hand_type": hand_type,
+            "pot_size": pot_size
         })
     
     return parsed_hands, detected_hero
@@ -202,33 +207,29 @@ def parse_hands(content):
 def generate_match_summary(hands_data, vpip, pfr, api_key, model):
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
     
-    # 真實關鍵手牌篩選：只取 vpip == True（Hero 有入池）的手牌
+    # 關鍵手牌篩選：vpip == True，依 pot_size（底池大小）由大到小排序，取前 5 手最大底池
     key_hands_raw = [h for h in hands_data if h.get("vpip")]
-    
-    # 依 content 字串長度由長到短排序（越長代表打到轉牌/河牌或激烈加注，越關鍵）
-    key_hands_raw.sort(key=lambda h: len(h.get("content", "")), reverse=True)
+    key_hands_raw.sort(key=lambda h: h.get("pot_size", 0), reverse=True)
     key_hands = key_hands_raw[:5]
     
-    # 組關鍵手牌描述：每手包含 id、hero_cards（標註 Suited/Offsuit）、content
+    # 組關鍵手牌描述：一律使用 Hand #<display_index>（與 UI 列表一致），不顯示 TM... 原始 ID
     key_hands_lines = []
     for i, h in enumerate(key_hands, 1):
-        hand_id = h.get("id") or "Unknown"
+        display_idx = h.get("display_index", i)
         hero_cards = h.get("hero_cards") or "??"
         suited_label = "(Suited)" if h.get("is_suited") else "(Offsuit)"
         ht = h.get("hand_type") or "??"
+        pot_size = h.get("pot_size", 0)
         key_hands_lines.append(
-            f"【關鍵手牌 {i}】\n"
-            f"- 手牌 ID: {hand_id}\n"
+            f"【Hand #{display_idx}】\n"
             f"- Hero 底牌: {hero_cards} {suited_label} (牌型: {ht})\n"
+            f"- 底池: {pot_size}\n"
             f"- 完整紀錄:\n{h.get('content', '')}"
         )
     
     key_hands_text = "\n\n---\n\n".join(key_hands_lines) if key_hands_lines else "（無 VPIP 手牌）"
     
-    prompt = f"""你是一位世界級的撲克教練，同時也是 Hero 的摯友。你的語氣要專業但溫暖、直率且帶有鼓勵性。不要像機器人一樣列點，要像在跟朋友覆盤聊天。
-
-【禁止】不要用「根據數據顯示」、「總結如下」、「第一點、第二點」這類生硬的 AI 用語。
-【鼓勵】用「這手牌如果你這樣打…」、「兄弟，這裡稍微急了一點…」這種口吻。
+    prompt = f"""你是一位專業且資深的撲克導師。語氣要求：專業、冷靜、客觀，帶有建設性。請勿使用「兄弟」、「喔！」、「秀肌肉」等過於輕浮或江湖味的詞彙。
 
 ---
 
@@ -237,23 +238,23 @@ def generate_match_summary(hands_data, vpip, pfr, api_key, model):
 - VPIP: {vpip}%
 - PFR: {pfr}%
 
-【關鍵手牌（共 5 手）】
-以下手牌皆已標註 (Suited) 或 (Offsuit)，請依此解讀，勿自行猜測花色。
+【關鍵手牌（共 5 手，依底池大小選出）】
+以下手牌編號為 Hand #數字，與使用者介面列表完全對應。請依此編號引用，勿使用 TM 等原始 ID。手牌已標註 (Suited) 或 (Offsuit)，請依此解讀花色。
 
 {key_hands_text}
 
 ---
 
-【輸出格式】請務必依以下三個區塊、用 Markdown 撰寫，並加上對應的 Emoji 標題：
+【輸出格式】請務必依以下三個區塊、用 Markdown 撰寫：
 
-## 🎯 賽事一句話點評
-針對整體 VPIP/PFR 與風格，用一句話給出狠評或肯定（像在跟兄弟講話）。
+## 🎯 賽事回顧
+請寫一段約 150～200 字的完整段落，像賽後新聞稿一樣，專業地總結選手的風格（鬆/緊、被動/激進）以及本場比賽的主要漏洞。不要只寫一句話。
 
 ## 🔥 關鍵戰役覆盤
-針對上面 5 手關鍵手牌，逐手或擇要點評 Hero 的決策。每當提到某一手時，請標註該手牌的 ID（例如 Hand #TM123456），方便對照。
+針對上述 5 手大底池手牌，分析 Hero 在大底池處理上的優缺點。每當提到某一手時，必須標註「Hand #數字」（例如 Hand #3、Hand #12），與介面列表一致。
 
 ## 💡 下場比賽調整
-給出 1～2 個具體可執行的建議（不要空泛，要 Hero 下一場真的能做的）。"""
+給出 1～2 個具體可執行的建議。"""
     
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
     try:
@@ -285,8 +286,10 @@ else:
             # 呼叫解析函數
             hands, hero_name = parse_hands(content)
 
-            # 👇 這裡是你手動加入的，讓手牌從 Hand #1 開始顯示
+            # 反轉為時間正序（最舊→最新），並為每手牌加上 display_index（與 UI 一致）
             hands.reverse()
+            for idx, h in enumerate(hands, start=1):
+                h["display_index"] = idx
             
             if not hands:
                 st.error("❌ 無法解析手牌，請確認格式。")
@@ -326,10 +329,10 @@ else:
                     col_list, col_detail = st.columns([1, 2])
                     
                     with col_list:
-                        # 優化手牌列表顯示：Hand #1: A♥️ K♠️
+                        # 優化手牌列表顯示：Hand #<display_index>: A♥️ K♠️（與 AI 報告編號一致）
                         def format_hand_label(i):
                             hand = hands[i]
-                            hand_num = i + 1
+                            hand_num = hand.get("display_index", i + 1)
                             cards_display = cards_to_emoji(hand.get('hero_cards'))
                             return f"Hand #{hand_num}: {cards_display}"
                         
