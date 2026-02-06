@@ -460,6 +460,11 @@ def analyze_specific_hand(hand_data, api_key, model):
 1. **嚴禁偷看未來**：當 Hero 行動時，排在 Hero 後面的玩家尚未行動。即使 Log 顯示他們後來 Call 了，你在分析當下必須假定他們動作未知。
 2. **位置檢核**：嚴格確認 Hero 相對位置，不要混淆順序。
 
+【一致性協議 (Consistency Protocol)】
+你的分析必須具備「重現性」。對於同一手牌數據，必須給出相同的建議。
+- 當遇到「邊緣決策 (Close Call)」時，請優先選擇 **GTO 頻率最高** 的選項，而不是隨機挑選「混合策略 (Mixed Strategy)」中的小頻率選項。
+- 除非有明確的剝削理由（例如對手數據異常），否則一律以**標準 GTO 線路**為準。
+
 【語氣範例 (Few-Shot Examples) - 請模仿這種說話方式】
 
 範例 1 (Hero 打得太龜縮):
@@ -511,7 +516,7 @@ def analyze_specific_hand(hand_data, api_key, model):
     
     payload = {
         "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {"temperature": 0.4}
+        "generationConfig": {"temperature": 0.1}
     }
     try:
         resp = requests.post(url, headers={'Content-Type': 'application/json'}, data=json.dumps(payload))
