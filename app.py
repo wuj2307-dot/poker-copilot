@@ -93,7 +93,7 @@ with st.sidebar:
         st.header("⚙️ 設定")
         selected_model = st.selectbox("AI 引擎", ["gemini-2.5-flash"])
     st.markdown("---")
-    st.link_button("💬 許願 / 回報 Bug", "https://forms.gle/your-form-link-placeholder", use_container_width=True)
+    st.link_button("💬 許願 / 回報 Bug", "https://docs.google.com/forms/d/e/1FAIpQLSeiQT3WgoxLXqfn6eMrvQkS5lBTewgl9iS9AkxQuMyGTySESA/viewform", use_container_width=True)
 
 # --- 3. 核心功能函數 (修復版) ---
 
