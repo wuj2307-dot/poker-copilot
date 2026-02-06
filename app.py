@@ -2,6 +2,7 @@ import streamlit as st
 import re
 import requests
 import json
+import random
 from datetime import datetime
 
 # --- 1. 頁面設定 ---
@@ -66,6 +67,14 @@ st.markdown("""
 st.title("Poker Copilot: Beta 🚀")
 st.caption("內部測試版 | 請輸入通關密碼")
 
+# 單手分析時的隨機等待文案
+LOADING_TEXTS = [
+    "正在計算死錢賠率...",
+    "正在分析對手範圍...",
+    "正在回顧 GTO 策略...",
+    "AI 教練正在思考最佳打法...",
+]
+
 # --- 2. 側邊欄：驗證與設定 ---
 with st.sidebar:
     st.header("🔐 身份驗證")
@@ -83,6 +92,8 @@ with st.sidebar:
     if api_key:
         st.header("⚙️ 設定")
         selected_model = st.selectbox("AI 引擎", ["gemini-2.5-flash"])
+    st.markdown("---")
+    st.link_button("💬 許願 / 回報 Bug", "https://forms.gle/your-form-link-placeholder", use_container_width=True)
 
 # --- 3. 核心功能函數 (修復版) ---
 
@@ -237,9 +248,12 @@ def parse_hands(content):
         if re.search(pfr_pattern, preflop_text, re.MULTILINE):
             is_pfr = True
         
-        # 6. 手牌花色與牌型（同花判定：兩張牌最後一字元相同則 is_suited=True）
+        # 6. 手牌花色與牌型（同花判定 + 牌型標籤）
         is_suited = False
         hand_type = None
+        is_pair = False
+        is_ax = False
+        is_broadway = False
         if hero_cards:
             cards = hero_cards.split()
             if len(cards) >= 2:
@@ -247,7 +261,11 @@ def parse_hands(content):
                 suit2 = cards[1][-1].lower()
                 is_suited = (suit1 == suit2)
                 rank_order = "AKQJT98765432"
+                broadway_ranks = "AKQJT"
                 r1, r2 = cards[0][:-1].upper(), cards[1][:-1].upper()
+                is_pair = (r1 == r2)
+                is_ax = (r1 == "A" or r2 == "A")
+                is_broadway = (r1 in broadway_ranks and r2 in broadway_ranks)
                 if r1 not in rank_order or r2 not in rank_order:
                     hand_type = f"{r1}{r2}{'s' if is_suited else 'o'}"
                 else:
@@ -265,6 +283,9 @@ def parse_hands(content):
         hero_seat = int(hero_seat_match.group(1)) if hero_seat_match else None
         active_seats = list(set(int(m.group(1)) for m in re.finditer(r"Seat (\d+): .+ in chips", full_hand_text)))
         hero_position_str = calculate_position(hero_seat, button_seat, active_seats)
+        hero_dist = distance_to_button(hero_seat, button_seat, active_seats)
+        dist_to_name = {0: "BTN", 1: "SB", 2: "BB", 3: "UTG", 4: "UTG+1", 5: "MP", 6: "MP+1", 7: "CO"}
+        position_name = dist_to_name.get(hero_dist, "Early") if hero_dist is not None else "Early"
         
         # 8b. 主要對手 (Main Villain) 與相對位置 (IP/OOP)
         villain_seat = None
@@ -337,6 +358,10 @@ def parse_hands(content):
             "relative_pos_str": relative_pos_str,
             "result": result,
             "bb_size": bb_size,
+            "is_pair": is_pair,
+            "is_ax": is_ax,
+            "is_broadway": is_broadway,
+            "position_name": position_name,
         })
     
     return parsed_hands, detected_hero
@@ -433,19 +458,19 @@ def analyze_specific_hand(hand_data, api_key, model):
 - 禁語：嚴禁機械式引用「系統規則」或「優先級條款」。
 - 核心思維：從 EV (期望值)、Fold Equity (棄牌率) 和 Range (範圍) 出發。
 
-【內在思維模型 (Mental Framework) - 用於推導結論】
-當你分析手牌時，必須依序檢視以下三個物理定律。不要死記牌型，要計算邏輯：
+【內在思維模型 (Mental Framework) - 僅供內部推導，切勿在輸出中背誦定律名稱】
+當你分析手牌時，必須依序檢視以下邏輯來推導結論。這些是「思考用」的框架，**不要**在回覆中寫出「死錢定律」、「權益實現」等術語標籤。
 
-1. **死錢定律 (The Dead Money Principle)**
+1. **底池死錢與棄牌率**
    - **邏輯**：底池內的死錢（Ante + Blinds + 加注跟注額）越多，我們對抗的勝率要求就越低。
    - **應用**：當 Hero 在盲注位面對「Open + Call」時，底池死錢巨大。此時中等強度的牌（如 77-TT, AJs, KQs）**全下 (Squeeze)** 的 EV 往往高於跟注或棄牌，因為能同時贏得「死錢」與「棄牌率」。
    - *推論*：若 Hero 放棄爭奪死錢（Fold）或只是被動跟注（Call）導致翻後沒位置，請嚴厲批評。
 
-2. **位置與權益實現 (Position & Equity Realization)**
+2. **位置與可實現權益**
    - **邏輯**：沒有位置 (OOP) 就很難實現手牌價值。
    - **應用**：在 OOP (如 SB/BB) 面對加注，策略應傾向「極化 (Polarized)」——要嘛強勢 3-bet/Shove，要嘛直接 Fold。**平跟 (Call) 通常是最差選項**（除非是大對子陷阱或賠率極好的投機牌）。
 
-3. **籌碼深度壓力 (Stack Depth Pressure)**
+3. **籌碼深度與策略**
    - **邏輯**：
      - **< 25BB**：每一顆籌碼都是武器。任何邊緣牌 (AXs, 小對子) 只要有棄牌率，推出去 (Shove) 通常都比 Call 好。
      - **30-50BB**：這是最尷尬的深度。避免用中等牌 (如 KJ, QJ, 小對子) 在前位 Open 卻無法抵抗 3-bet。
@@ -465,18 +490,19 @@ def analyze_specific_hand(hand_data, api_key, model):
 
 ---
 
-【輸出格式】
+【輸出格式與口語化要求】
+- **術語內化**：請將專業概念內化，用**口語化**方式給建議，不要像機器人一樣背誦定律名稱。例如：不要說「根據死錢定律」，要說「底池裡已經有很多死錢，這時候我們應該…」；不要說「權益實現不足」，要說「沒位置時這手牌很難發揮價值…」。
 0. **撲克牌**：提到撲克牌時一律使用 Emoji（如 A♥️, T♠️, K♣️），嚴禁純文字代碼。
 1. **一句話狠評**：直接點出關鍵錯誤或亮點。
 2. ===SPLIT===
 3. **Markdown 分析**：
    ## 🧐 局勢解讀
-   (從 SPR、底池死錢、對手範圍進行數學層面的解讀。)
+   (從 SPR、底池、對手範圍等口語化解讀，勿列舉定律名稱。)
 
    ---
    
    ## 💡 教練建議
-   (基於 GTO 或剝削邏輯給出具體建議，解釋為什麼這樣打 EV 更高。)
+   (用自然口吻給出具體建議，說明為什麼這樣打 EV 更高。)
 """
     
     payload = {
@@ -547,24 +573,44 @@ else:
                     col_list, col_detail = st.columns([1, 2])
                     
                     with col_list:
-                        # 篩選器：縮小列表範圍，方便查找（下拉選單節省版面）
-                        filter_option = st.selectbox(
-                            "🔍 篩選手牌類型",
-                            ["全部手牌", "💥 主動入池 (VPIP)", "🏆 獲勝手牌", "💸 落敗檢討", "🔥 大底池 (>20BB)"],
-                            index=0,
-                            key="hand_filter"
-                        )
-                        if filter_option == "全部手牌":
-                            filtered_hands = hands
-                        elif filter_option == "💥 主動入池 (VPIP)":
-                            filtered_hands = [h for h in hands if h.get("vpip")]
-                        elif filter_option == "🏆 獲勝手牌":
-                            filtered_hands = [h for h in hands if h.get("result") == "win"]
-                        elif filter_option == "💸 落敗檢討":
-                            filtered_hands = [h for h in hands if h.get("result") == "loss"]
-                        else:  # 大底池 (>20BB)
-                            bb_size_default = 1
-                            filtered_hands = [h for h in hands if (h.get("bb_size") or bb_size_default) and (h.get("pot_size", 0) > 20 * (h.get("bb_size") or bb_size_default))]
+                        # 進階篩選區：多重條件取交集
+                        with st.expander("🔍 進階手牌篩選 (點擊展開)", expanded=True):
+                            filter_option = st.selectbox(
+                                "主要篩選",
+                                ["全部", "💥 VPIP", "🏆 獲勝", "💸 落敗", "🔥 大底池 (>20BB)"],
+                                index=0,
+                                key="hand_filter"
+                            )
+                            if filter_option == "全部":
+                                base_hands = hands
+                            elif filter_option == "💥 VPIP":
+                                base_hands = [h for h in hands if h.get("vpip")]
+                            elif filter_option == "🏆 獲勝":
+                                base_hands = [h for h in hands if h.get("result") == "win"]
+                            elif filter_option == "💸 落敗":
+                                base_hands = [h for h in hands if h.get("result") == "loss"]
+                            else:
+                                bb_size_default = 1
+                                base_hands = [h for h in hands if (h.get("bb_size") or bb_size_default) and (h.get("pot_size", 0) > 20 * (h.get("bb_size") or bb_size_default))]
+                            
+                            card_type_options = ["對子 (Pair)", "Ax 牌型", "人頭大牌 (Broadway)"]
+                            selected_card_types = st.multiselect("牌型篩選", card_type_options, default=[], key="card_type_filter")
+                            position_options = ["BTN", "SB", "BB", "UTG", "MP", "CO"]
+                            selected_positions = st.multiselect("位置篩選", position_options, default=[], key="position_filter")
+                            
+                            filtered_hands = base_hands
+                            if selected_card_types:
+                                def match_card_type(h):
+                                    if "對子 (Pair)" in selected_card_types and h.get("is_pair"):
+                                        return True
+                                    if "Ax 牌型" in selected_card_types and h.get("is_ax"):
+                                        return True
+                                    if "人頭大牌 (Broadway)" in selected_card_types and h.get("is_broadway"):
+                                        return True
+                                    return False
+                                filtered_hands = [h for h in filtered_hands if match_card_type(h)]
+                            if selected_positions:
+                                filtered_hands = [h for h in filtered_hands if h.get("position_name") in selected_positions]
                         
                         if not filtered_hands:
                             st.info("此分類無手牌")
@@ -592,7 +638,7 @@ else:
                         
                         # AI 分析按鈕（傳入完整 hand_data；結果依 ===SPLIT=== 分離狠評與詳情）
                         if st.button(f"🤖 AI 分析這手牌", key="analyze_btn", use_container_width=True):
-                            with st.spinner("AI 正在分析這手牌..."):
+                            with st.spinner(random.choice(LOADING_TEXTS)):
                                 analysis = analyze_specific_hand(hand_data, api_key, selected_model)
                                 st.markdown("### 💡 AI 分析結果")
                                 st.caption(f"📍 **系統鎖定**：位置 {sys_position} | 手牌 {sys_cards}")
