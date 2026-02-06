@@ -453,6 +453,18 @@ def analyze_specific_hand(hand_data, api_key, model):
     
     prompt = f"""你是 Hero 的世界級撲克教練。你的目標不是背誦公式，而是基於 GTO 原理與剝削邏輯進行深度解析。
 
+【時間線裁決 (CRITICAL TIMELINE RULE)】
+你正在覆盤 Hero 的「當下決策」。
+1. **嚴格區分「已知」與「未知」**：
+   - 當 Hero 行動時（例如 Pre-flop），排在 Hero **後面**的玩家（如 Button, SB, BB）尚未行動。
+   - 即使手牌紀錄中顯示「Button 後來 Call 了」，你在分析 Hero 的決策當下，**必須假定 Button 的動作是未知的**。
+   - **嚴禁**說出「因為 Button 已經跟注，所以 Hero 應該...」這類倒果為因的分析。
+
+2. **位置邏輯檢核**：
+   - 若 Hero 是 CO，Button (BTN) 尚未行動。
+   - 若 Hero 是 SB，Button (BTN) 已經行動。
+   - 請根據下方【系統判定事實】中的 Hero 位置，嚴格確認誰先誰後。
+
 【角色設定】
 - 語氣：專業、銳利、邏輯嚴密。
 - 禁語：嚴禁機械式引用「系統規則」或「優先級條款」。
