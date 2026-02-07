@@ -75,6 +75,74 @@ LOADING_TEXTS = [
     "AI 教練正在思考最佳打法...",
 ]
 
+# 迷你錦標賽 Demo 數據 (3 手牌)
+DEMO_HANDS_TEXT = """Poker Hand #DEMO_TRAP: Tournament #1 - Level 5 - 2026/02/08
+Table '1' 8-max Seat #1 is the button
+Seat 1: Hero (40000)
+Seat 2: Villain_SB (38000)
+Seat 3: Villain_BB (25000)
+Seat 4: Villain_UTG (42000)
+Seat 5: Player_5 (30000)
+Seat 6: Player_6 (28000)
+Seat 7: Player_7 (35000)
+Seat 8: Player_8 (32000)
+Villain_SB: posts small blind 200
+Villain_BB: posts big blind 400
+*** HOLE CARDS ***
+Dealt to Hero [Td Js]
+Villain_UTG: raises 800 to 1200
+Player_5: folds
+Player_6: folds
+Player_7: calls 1200
+Player_8: calls 1200
+Hero: calls 1200
+Villain_SB: folds
+Villain_BB: folds
+*** FLOP *** [Kh 7c 2s]
+Villain_UTG: bets 2400
+Hero: folds
+Uncalled bet (2400) returned to Villain_UTG
+*** SUMMARY ***
+Seat 1: Hero (button) folded on the Flop
+
+Poker Hand #DEMO_VALUE: Tournament #1 - Level 5 - 2026/02/08
+Table '1' 8-max Seat #4 is the button
+Seat 1: Hero (45000)
+Seat 2: Villain (38000)
+*** HOLE CARDS ***
+Dealt to Hero [As Ks]
+Hero: raises 1000 to 1000
+Villain: calls 1000
+*** FLOP *** [Ah 7h 2c]
+Hero: bets 1500
+Villain: calls 1500
+*** TURN *** [Ah 7h 2c] [Kd]
+Hero: bets 3000
+Villain: calls 3000
+*** RIVER *** [Ah 7h 2c Kd] [Tc]
+Hero: bets 8000
+Villain: folds
+*** SUMMARY ***
+Seat 1: Hero collected 12000 from pot
+
+Poker Hand #DEMO_COOLER: Tournament #1 - Level 5 - 2026/02/08
+Table '1' 8-max Seat #1 is the button
+Seat 1: Hero (20000)
+Seat 3: Villain_BB (25000)
+*** HOLE CARDS ***
+Dealt to Hero [Kc Kd]
+Hero: raises 900 to 900
+Villain_BB: raises 2700 to 3600
+Hero: raises 16400 to 20000 all-in
+Villain_BB: calls 16400
+*** SHOW DOWN ***
+Hero: shows [Kc Kd] (a pair of Kings)
+Villain_BB: shows [Ac As] (a pair of Aces)
+*** BOARD *** [2d 5h 9s Jh Qs]
+*** SUMMARY ***
+Seat 3: Villain_BB won (40000) with a pair of Aces
+"""
+
 # --- 2. 側邊欄：驗證與設定 ---
 with st.sidebar:
     st.header("🔐 身份驗證")
@@ -92,6 +160,9 @@ with st.sidebar:
     if api_key:
         st.header("⚙️ 設定")
         selected_model = st.selectbox("AI 引擎", ["gemini-2.5-flash"])
+        if st.button("🎲 沒檔案？載入範例 (3手牌)", key="sidebar_demo_btn", use_container_width=True):
+            st.session_state.demo_content = DEMO_HANDS_TEXT
+            st.rerun()
     st.markdown("---")
     st.link_button("💬 許願 / 回報 Bug", "https://docs.google.com/forms/d/e/1FAIpQLSeiQT3WgoxLXqfn6eMrvQkS5lBTewgl9iS9AkxQuMyGTySESA/viewform", use_container_width=True)
 
@@ -202,13 +273,17 @@ def parse_hands(content):
         
         full_hand_text = raw_hand.strip()
         
-        # 1. 抓取手牌 ID (格式: "Poker Hand #TM5492660659:")
-        hand_id_match = re.search(r"Poker Hand #(TM\d+):", full_hand_text)
+        # 1. 抓取手牌 ID (格式: "Poker Hand #TM5492660659:" 或 "Poker Hand #DEMO_TRAP:")
+        hand_id_match = re.search(r"Poker Hand #(TM\d+|[A-Za-z0-9_]+):", full_hand_text)
         hand_id = hand_id_match.group(1) if hand_id_match else "Unknown"
         
-        # 2. 抓取 Big Blind 大小 (格式: "Level19(1,750/3,500)")
+        # 2. 抓取 Big Blind 大小 (GGPoker: "Level19(1,750/3,500)" / Demo: "posts big blind 400")
         bb_size_match = re.search(r"Level\d+\([\d,]+/([\d,]+)\)", full_hand_text)
-        bb_size = int(bb_size_match.group(1).replace(",", "")) if bb_size_match else 1
+        if bb_size_match:
+            bb_size = int(bb_size_match.group(1).replace(",", ""))
+        else:
+            bb_fallback = re.search(r"posts big blind ([\d,]+)", full_hand_text)
+            bb_size = int(bb_fallback.group(1).replace(",", "")) if bb_fallback else 400
         
         # 3. 抓取 Hero 名字與手牌
         # GGPoker 格式：只有 Hero 會有 "Dealt to <Name> [牌]"，其他玩家是 "Dealt to <Name>" (無牌或空)
@@ -224,8 +299,8 @@ def parse_hands(content):
         if not current_hero:
             continue
         
-        # 4. 抓取 Hero 的起始籌碼 (格式: "Seat 6: Hero (35,803 in chips)")
-        stack_pattern = rf"Seat \d+: {re.escape(current_hero)} \(([\d,]+) in chips\)"
+        # 4. 抓取 Hero 的起始籌碼 (GGPoker: "in chips" / Demo: "Seat 1: Hero (40000)")
+        stack_pattern = rf"Seat \d+: {re.escape(current_hero)} \(([\d,]+)(?: in chips)?\)"
         stack_match = re.search(stack_pattern, full_hand_text)
         hero_chips = int(stack_match.group(1).replace(",", "")) if stack_match else 0
         bb_count = round(hero_chips / bb_size, 1) if bb_size > 0 else 0
@@ -272,16 +347,24 @@ def parse_hands(content):
                     high, low = (r1, r2) if rank_order.index(r1) < rank_order.index(r2) else (r2, r1)
                     hand_type = f"{high}{low}{'s' if is_suited else 'o'}"
         
-        # 7. 抓取底池大小 (GGPoker 格式: "Total pot 1,250 | Rake 0")
+        # 7. 抓取底池大小 (GGPoker: "Total pot 1,250" / Demo: "collected 12000 from pot" or "won (40000)")
         pot_match = re.search(r"Total pot ([\d,]+)", full_hand_text)
-        pot_size = int(pot_match.group(1).replace(",", "")) if pot_match else 0
+        if pot_match:
+            pot_size = int(pot_match.group(1).replace(",", ""))
+        else:
+            collected = re.search(r"collected ([\d,]+) from pot", full_hand_text)
+            won = re.search(r"won \(([\d,]+)\)", full_hand_text)
+            pot_size = int((collected or won).group(1).replace(",", "")) if (collected or won) else 0
         
         # 8. 精準抓取座位並用數學計算位置（完全移除 AI 對位置的解釋權）
         btn_match = re.search(r"The button is in seat #(\d+)", full_hand_text) or re.search(r"Seat #(\d+) is the button", full_hand_text)
         button_seat = int(btn_match.group(1)) if btn_match else None
         hero_seat_match = re.search(rf"Seat (\d+): {re.escape(current_hero)}\s", full_hand_text)
         hero_seat = int(hero_seat_match.group(1)) if hero_seat_match else None
-        active_seats = list(set(int(m.group(1)) for m in re.finditer(r"Seat (\d+): .+ in chips", full_hand_text)))
+        # GGPoker: "in chips" / Demo: "Seat 1: Hero (40000)"
+        active_seats = list(set(int(m.group(1)) for m in re.finditer(r"Seat (\d+): .+\([\d,]+\)", full_hand_text)))
+        if not active_seats:
+            active_seats = list(set(int(m.group(1)) for m in re.finditer(r"Seat (\d+):", full_hand_text)))
         hero_position_str = calculate_position(hero_seat, button_seat, active_seats)
         hero_dist = distance_to_button(hero_seat, button_seat, active_seats)
         dist_to_name = {0: "BTN", 1: "SB", 2: "BB", 3: "UTG", 4: "UTG+1", 5: "MP", 6: "MP+1", 7: "CO"}
@@ -542,131 +625,147 @@ if not api_key:
 else:
     uploaded_file = st.file_uploader("📂 上傳比賽紀錄 (.txt)", type=["txt"])
     
+    # 內容來源：上傳檔案 或 Demo（session_state）
+    content = None
+    is_demo_mode = False
     if uploaded_file:
         content = load_content(uploaded_file)
-        if content:
-            # 呼叫解析函數
-            hands, hero_name = parse_hands(content)
+    elif st.session_state.get("demo_content"):
+        content = st.session_state.demo_content
+        is_demo_mode = True
+    
+    if not content:
+        # 未上傳檔案且無 Demo：顯示歡迎畫面
+        st.header("👋 歡迎來到 Poker Copilot")
+        if st.button("🎲 我沒檔案，先載入範例試玩", type="primary", key="main_demo_btn"):
+            st.session_state.demo_content = DEMO_HANDS_TEXT
+            st.rerun()
+    elif content:
+        # Demo 模式提示
+        if is_demo_mode:
+            st.warning("🦁 目前正在展示 Demo 牌譜 (共3手)，請點擊左側列表切換手牌")
+        
+        # 呼叫解析函數
+        hands, hero_name = parse_hands(content)
 
-            # 反轉為時間正序（最舊→最新），並為每手牌加上 display_index（與 UI 一致）
-            hands.reverse()
-            for idx, h in enumerate(hands, start=1):
-                h["display_index"] = idx
+        # 反轉為時間正序（最舊→最新），並為每手牌加上 display_index（與 UI 一致）
+        hands.reverse()
+        for idx, h in enumerate(hands, start=1):
+            h["display_index"] = idx
+        
+        if not hands:
+            st.error("❌ 無法解析手牌，請確認格式。")
+        else:
+            total_hands = len(hands)
+            vpip_count = sum(1 for h in hands if h['vpip'])
+            pfr_count = sum(1 for h in hands if h['pfr'])
             
-            if not hands:
-                st.error("❌ 無法解析手牌，請確認格式。")
-            else:
-                total_hands = len(hands)
-                vpip_count = sum(1 for h in hands if h['vpip'])
-                pfr_count = sum(1 for h in hands if h['pfr'])
+            vpip = round((vpip_count / total_hands) * 100, 1) if total_hands > 0 else 0
+            pfr = round((pfr_count / total_hands) * 100, 1) if total_hands > 0 else 0
+
+            # --- 分頁顯示 (合併為 2 個分頁) ---
+            tab1, tab2 = st.tabs(["📊 賽事儀表板", "🔍 手牌深度覆盤"])
+
+            with tab1:
+                # 數據卡片區塊
+                st.markdown("### 📊 關鍵數據")
+                c1, c2, c3, c4 = st.columns(4)
+                c1.metric("總手牌數", total_hands)
+                c2.metric("VPIP", f"{vpip}%")
+                c3.metric("PFR", f"{pfr}%")
+                c4.metric("Hero ID", hero_name if hero_name else "Unknown")
                 
-                vpip = round((vpip_count / total_hands) * 100, 1) if total_hands > 0 else 0
-                pfr = round((pfr_count / total_hands) * 100, 1) if total_hands > 0 else 0
+                # 分隔線
+                st.divider()
+                
+                # AI 賽事總結區塊 (原 Tab 2 內容)
+                st.markdown("### 🧠 AI 賽事總結")
+                if st.button("生成 AI 賽事總結", key="summary_btn"):
+                    with st.spinner("AI 思考中..."):
+                        advice = generate_match_summary(hands, vpip, pfr, api_key, selected_model)
+                        st.markdown(advice)
 
-                # --- 分頁顯示 (合併為 2 個分頁) ---
-                tab1, tab2 = st.tabs(["📊 賽事儀表板", "🔍 手牌深度覆盤"])
-
-                with tab1:
-                    # 數據卡片區塊
-                    st.markdown("### 📊 關鍵數據")
-                    c1, c2, c3, c4 = st.columns(4)
-                    c1.metric("總手牌數", total_hands)
-                    c2.metric("VPIP", f"{vpip}%")
-                    c3.metric("PFR", f"{pfr}%")
-                    c4.metric("Hero ID", hero_name if hero_name else "Unknown")
+            with tab2:
+                # 手牌覆盤區塊 (優化版)
+                st.markdown("### 🔍 手牌覆盤")
+                col_list, col_detail = st.columns([1, 2])
+                
+                with col_list:
+                    # 進階篩選區：多重條件取交集
+                    with st.expander("🔍 進階手牌篩選 (點擊展開)", expanded=True):
+                        filter_option = st.selectbox(
+                            "主要篩選",
+                            ["全部", "💥 VPIP", "🏆 獲勝", "💸 落敗", "🔥 大底池 (>20BB)"],
+                            index=0,
+                            key="hand_filter"
+                        )
+                        if filter_option == "全部":
+                            base_hands = hands
+                        elif filter_option == "💥 VPIP":
+                            base_hands = [h for h in hands if h.get("vpip")]
+                        elif filter_option == "🏆 獲勝":
+                            base_hands = [h for h in hands if h.get("result") == "win"]
+                        elif filter_option == "💸 落敗":
+                            base_hands = [h for h in hands if h.get("result") == "loss"]
+                        else:
+                            bb_size_default = 1
+                            base_hands = [h for h in hands if (h.get("bb_size") or bb_size_default) and (h.get("pot_size", 0) > 20 * (h.get("bb_size") or bb_size_default))]
+                        
+                        card_type_options = ["對子 (Pair)", "Ax 牌型", "人頭大牌 (Broadway)"]
+                        selected_card_types = st.multiselect("牌型篩選", card_type_options, default=[], key="card_type_filter")
+                        position_options = ["BTN", "SB", "BB", "UTG", "MP", "CO"]
+                        selected_positions = st.multiselect("位置篩選", position_options, default=[], key="position_filter")
+                        
+                        filtered_hands = base_hands
+                        if selected_card_types:
+                            def match_card_type(h):
+                                if "對子 (Pair)" in selected_card_types and h.get("is_pair"):
+                                    return True
+                                if "Ax 牌型" in selected_card_types and h.get("is_ax"):
+                                    return True
+                                if "人頭大牌 (Broadway)" in selected_card_types and h.get("is_broadway"):
+                                    return True
+                                return False
+                            filtered_hands = [h for h in filtered_hands if match_card_type(h)]
+                        if selected_positions:
+                            filtered_hands = [h for h in filtered_hands if h.get("position_name") in selected_positions]
                     
-                    # 分隔線
-                    st.divider()
-                    
-                    # AI 賽事總結區塊 (原 Tab 2 內容)
-                    st.markdown("### 🧠 AI 賽事總結")
-                    if st.button("生成 AI 賽事總結", key="summary_btn"):
-                        with st.spinner("AI 思考中..."):
-                            advice = generate_match_summary(hands, vpip, pfr, api_key, selected_model)
-                            st.markdown(advice)
-
-                with tab2:
-                    # 手牌覆盤區塊 (優化版)
-                    st.markdown("### 🔍 手牌覆盤")
-                    col_list, col_detail = st.columns([1, 2])
-                    
-                    with col_list:
-                        # 進階篩選區：多重條件取交集
-                        with st.expander("🔍 進階手牌篩選 (點擊展開)", expanded=True):
-                            filter_option = st.selectbox(
-                                "主要篩選",
-                                ["全部", "💥 VPIP", "🏆 獲勝", "💸 落敗", "🔥 大底池 (>20BB)"],
-                                index=0,
-                                key="hand_filter"
-                            )
-                            if filter_option == "全部":
-                                base_hands = hands
-                            elif filter_option == "💥 VPIP":
-                                base_hands = [h for h in hands if h.get("vpip")]
-                            elif filter_option == "🏆 獲勝":
-                                base_hands = [h for h in hands if h.get("result") == "win"]
-                            elif filter_option == "💸 落敗":
-                                base_hands = [h for h in hands if h.get("result") == "loss"]
+                    if not filtered_hands:
+                        st.info("此分類無手牌")
+                        hand_data = hands[0] if hands else {}
+                    else:
+                        def format_filtered_label(i):
+                            hand = filtered_hands[i]
+                            hand_num = hand.get("display_index", i + 1)
+                            cards_display = cards_to_emoji(hand.get("hero_cards"))
+                            return f"Hand #{hand_num}: {cards_display}"
+                        
+                        selected_index = st.radio(
+                            "選擇手牌",
+                            range(len(filtered_hands)),
+                            format_func=format_filtered_label,
+                            key="hand_radio"
+                        )
+                        hand_data = filtered_hands[selected_index]
+                
+                with col_detail:
+                    # AI 分析按鈕（置頂，無需捲動）
+                    st.markdown("### 🕵️ 手牌細節")
+                    sys_position = hand_data.get("position", "Other")
+                    sys_cards = hand_data.get("hero_cards_emoji") or cards_to_emoji(hand_data.get("hero_cards"))
+                    if st.button(f"🤖 AI 分析這手牌", key="analyze_btn", use_container_width=True):
+                        with st.spinner(random.choice(LOADING_TEXTS)):
+                            analysis = analyze_specific_hand(hand_data, api_key, selected_model)
+                            st.markdown("### 💡 AI 分析結果")
+                            st.caption(f"📍 **系統鎖定**：位置 {sys_position} | 手牌 {sys_cards}")
+                            parts = analysis.split("===SPLIT===")
+                            summary_text = parts[0].strip() if parts else ""
+                            detail_text = parts[1].strip() if len(parts) > 1 else ""
+                            if summary_text and detail_text:
+                                st.info(summary_text, icon="🦁")
+                                st.markdown(detail_text)
                             else:
-                                bb_size_default = 1
-                                base_hands = [h for h in hands if (h.get("bb_size") or bb_size_default) and (h.get("pot_size", 0) > 20 * (h.get("bb_size") or bb_size_default))]
-                            
-                            card_type_options = ["對子 (Pair)", "Ax 牌型", "人頭大牌 (Broadway)"]
-                            selected_card_types = st.multiselect("牌型篩選", card_type_options, default=[], key="card_type_filter")
-                            position_options = ["BTN", "SB", "BB", "UTG", "MP", "CO"]
-                            selected_positions = st.multiselect("位置篩選", position_options, default=[], key="position_filter")
-                            
-                            filtered_hands = base_hands
-                            if selected_card_types:
-                                def match_card_type(h):
-                                    if "對子 (Pair)" in selected_card_types and h.get("is_pair"):
-                                        return True
-                                    if "Ax 牌型" in selected_card_types and h.get("is_ax"):
-                                        return True
-                                    if "人頭大牌 (Broadway)" in selected_card_types and h.get("is_broadway"):
-                                        return True
-                                    return False
-                                filtered_hands = [h for h in filtered_hands if match_card_type(h)]
-                            if selected_positions:
-                                filtered_hands = [h for h in filtered_hands if h.get("position_name") in selected_positions]
-                        
-                        if not filtered_hands:
-                            st.info("此分類無手牌")
-                            hand_data = hands[0] if hands else {}
-                        else:
-                            def format_filtered_label(i):
-                                hand = filtered_hands[i]
-                                hand_num = hand.get("display_index", i + 1)
-                                cards_display = cards_to_emoji(hand.get("hero_cards"))
-                                return f"Hand #{hand_num}: {cards_display}"
-                            
-                            selected_index = st.radio(
-                                "選擇手牌",
-                                range(len(filtered_hands)),
-                                format_func=format_filtered_label,
-                                key="hand_radio"
-                            )
-                            hand_data = filtered_hands[selected_index]
-                    
-                    with col_detail:
-                        # 系統判定摘要（選牌時即顯示，讓使用者確認）
-                        sys_position = hand_data.get("position", "Other")
-                        sys_cards = hand_data.get("hero_cards_emoji") or cards_to_emoji(hand_data.get("hero_cards"))
+                                st.markdown(analysis)
+                    else:
                         st.caption(f"📍 **系統判定**：位置 {sys_position} | 手牌 {sys_cards}")
-                        
-                        # AI 分析按鈕（傳入完整 hand_data；結果依 ===SPLIT=== 分離狠評與詳情）
-                        if st.button(f"🤖 AI 分析這手牌", key="analyze_btn", use_container_width=True):
-                            with st.spinner(random.choice(LOADING_TEXTS)):
-                                analysis = analyze_specific_hand(hand_data, api_key, selected_model)
-                                st.markdown("### 💡 AI 分析結果")
-                                st.caption(f"📍 **系統鎖定**：位置 {sys_position} | 手牌 {sys_cards}")
-                                parts = analysis.split("===SPLIT===")
-                                summary_text = parts[0].strip() if parts else ""
-                                detail_text = parts[1].strip() if len(parts) > 1 else ""
-                                if summary_text and detail_text:
-                                    st.info(summary_text, icon="🦁")
-                                    st.markdown(detail_text)
-                                else:
-                                    st.markdown(analysis)
-                        else:
-                            st.info("👆 點擊上方按鈕，讓 AI 分析這手牌的決策。")
+                        st.info("👆 點擊上方按鈕，讓 AI 分析這手牌的決策。")
