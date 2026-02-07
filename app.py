@@ -2555,10 +2555,8 @@ def parse_hands(content):
         button_seat = int(btn_match.group(1)) if btn_match else None
         hero_seat_match = re.search(rf"Seat (\d+): {re.escape(current_hero)}\s", full_hand_text)
         hero_seat = int(hero_seat_match.group(1)) if hero_seat_match else None
-        # GGPoker: "in chips" / Demo: "Seat 1: Hero (40000)"
-        active_seats = list(set(int(m.group(1)) for m in re.finditer(r"Seat (\d+): .+\([\d,]+\)", full_hand_text)))
-        if not active_seats:
-            active_seats = list(set(int(m.group(1)) for m in re.finditer(r"Seat (\d+):", full_hand_text)))
+        # 【修正點】放寬正則表達式，只要是 "Seat X:" 開頭的都算入座位，不再檢查括號內的籌碼格式
+        active_seats = list(set(int(m.group(1)) for m in re.finditer(r"Seat (\d+):", full_hand_text)))
         hero_position_str = calculate_position(hero_seat, button_seat, active_seats)
         hero_dist = distance_to_button(hero_seat, button_seat, active_seats)
         dist_to_name = {0: "BTN", 1: "SB", 2: "BB", 3: "UTG", 4: "UTG+1", 5: "MP", 6: "MP+1", 7: "CO"}
@@ -2973,8 +2971,3 @@ else:
                                 st.markdown(analysis)
                     else:
                         st.info("👆 點擊上方按鈕，查看教練建議")
-
-                    # --- 手牌原始紀錄 (移到底部) ---
-                    st.divider()
-                    with st.expander("查看原始手牌紀錄"):
-                        st.text(hand_data.get("content", ""))
