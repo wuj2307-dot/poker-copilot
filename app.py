@@ -2290,6 +2290,33 @@ st.markdown("""
     .stApp h2, .stApp h3 { font-weight: 600; color: rgba(255,255,255,0.9); }
     .stApp p, .stApp span { color: rgba(255,255,255,0.85); }
 
+    /* 1b. Hero Section (SaaS landing style) — title + slogan, centered, gradient */
+    div[data-testid="stVerticalBlock"]:has(> h1) {
+        text-align: center;
+        padding: 3rem 2rem 1rem 2rem;
+    }
+    div[data-testid="stVerticalBlock"]:has(> h1) h1 {
+        font-size: 3rem !important;
+        font-weight: 700;
+        background: linear-gradient(135deg, #00C6FF 0%, #0072FF 100%);
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent !important;
+        margin: 0;
+        letter-spacing: -0.02em;
+    }
+    div[data-testid="stVerticalBlock"]:has(> h1) + div[data-testid="stVerticalBlock"] {
+        text-align: center;
+        padding: 0.25rem 2rem 3rem 2rem;
+    }
+    div[data-testid="stVerticalBlock"]:has(> h1) + div[data-testid="stVerticalBlock"] *,
+    div[data-testid="stVerticalBlock"]:has(> h1) + div[data-testid="stVerticalBlock"] p,
+    div[data-testid="stVerticalBlock"]:has(> h1) + div[data-testid="stVerticalBlock"] small {
+        color: rgba(255,255,255,0.55) !important;
+        font-size: 1rem !important;
+        font-weight: 400;
+    }
+
     /* 2. Hide Streamlit chrome */
     header[data-testid="stHeader"] { visibility: hidden; }
     #MainMenu { visibility: hidden; }
