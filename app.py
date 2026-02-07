@@ -5,6 +5,8 @@ import json
 import random
 from datetime import datetime
 
+from demo_data import DEMO_HANDS_TEXT
+
 # --- 1. 頁面設定 ---
 st.set_page_config(page_title="Poker Copilot War Room", page_icon="♠️", layout="wide")
 
@@ -75,73 +77,6 @@ LOADING_TEXTS = [
     "AI 教練正在思考最佳打法...",
 ]
 
-# 迷你錦標賽 Demo 數據 (3 手牌)
-DEMO_HANDS_TEXT = """Poker Hand #DEMO_TRAP: Tournament #1 - Level 5 - 2026/02/08
-Table '1' 8-max Seat #1 is the button
-Seat 1: Hero (40000)
-Seat 2: Villain_SB (38000)
-Seat 3: Villain_BB (25000)
-Seat 4: Villain_UTG (42000)
-Seat 5: Player_5 (30000)
-Seat 6: Player_6 (28000)
-Seat 7: Player_7 (35000)
-Seat 8: Player_8 (32000)
-Villain_SB: posts small blind 200
-Villain_BB: posts big blind 400
-*** HOLE CARDS ***
-Dealt to Hero [Td Js]
-Villain_UTG: raises 800 to 1200
-Player_5: folds
-Player_6: folds
-Player_7: calls 1200
-Player_8: calls 1200
-Hero: calls 1200
-Villain_SB: folds
-Villain_BB: folds
-*** FLOP *** [Kh 7c 2s]
-Villain_UTG: bets 2400
-Hero: folds
-Uncalled bet (2400) returned to Villain_UTG
-*** SUMMARY ***
-Seat 1: Hero (button) folded on the Flop
-
-Poker Hand #DEMO_VALUE: Tournament #1 - Level 5 - 2026/02/08
-Table '1' 8-max Seat #4 is the button
-Seat 1: Hero (45000)
-Seat 2: Villain (38000)
-*** HOLE CARDS ***
-Dealt to Hero [As Ks]
-Hero: raises 1000 to 1000
-Villain: calls 1000
-*** FLOP *** [Ah 7h 2c]
-Hero: bets 1500
-Villain: calls 1500
-*** TURN *** [Ah 7h 2c] [Kd]
-Hero: bets 3000
-Villain: calls 3000
-*** RIVER *** [Ah 7h 2c Kd] [Tc]
-Hero: bets 8000
-Villain: folds
-*** SUMMARY ***
-Seat 1: Hero collected 12000 from pot
-
-Poker Hand #DEMO_COOLER: Tournament #1 - Level 5 - 2026/02/08
-Table '1' 8-max Seat #1 is the button
-Seat 1: Hero (20000)
-Seat 3: Villain_BB (25000)
-*** HOLE CARDS ***
-Dealt to Hero [Kc Kd]
-Hero: raises 900 to 900
-Villain_BB: raises 2700 to 3600
-Hero: raises 16400 to 20000 all-in
-Villain_BB: calls 16400
-*** SHOW DOWN ***
-Hero: shows [Kc Kd] (a pair of Kings)
-Villain_BB: shows [Ac As] (a pair of Aces)
-*** BOARD *** [2d 5h 9s Jh Qs]
-*** SUMMARY ***
-Seat 3: Villain_BB won (40000) with a pair of Aces
-"""
 
 # --- 2. 側邊欄：驗證與設定 ---
 with st.sidebar:
@@ -160,9 +95,6 @@ with st.sidebar:
     if api_key:
         st.header("⚙️ 設定")
         selected_model = st.selectbox("AI 引擎", ["gemini-2.5-flash"])
-        if st.button("🎲 沒檔案？載入範例 (3手牌)", key="sidebar_demo_btn", use_container_width=True):
-            st.session_state.demo_content = DEMO_HANDS_TEXT
-            st.rerun()
     st.markdown("---")
     st.link_button("💬 許願 / 回報 Bug", "https://docs.google.com/forms/d/e/1FAIpQLSeiQT3WgoxLXqfn6eMrvQkS5lBTewgl9iS9AkxQuMyGTySESA/viewform", use_container_width=True)
 
@@ -623,28 +555,39 @@ GTO 在這裡是非常明確的：面對早位強勢加注，JTo 這種雜色牌
 if not api_key:
     st.info("👈 請先在左側輸入通關密碼才能使用。")
 else:
+    # session_state：一鍵試用 Demo 模式
+    if "use_demo" not in st.session_state:
+        st.session_state.use_demo = False
+
     uploaded_file = st.file_uploader("📂 上傳比賽紀錄 (.txt)", type=["txt"])
     
-    # 內容來源：上傳檔案 或 Demo（session_state）
-    content = None
-    is_demo_mode = False
+    # 一鍵載入試用牌譜
+    if st.button("🎲 沒檔案？一鍵載入『試用牌譜』", key="demo_load_btn"):
+        st.session_state.use_demo = True
+        st.rerun()
+
     if uploaded_file:
         content = load_content(uploaded_file)
-    elif st.session_state.get("demo_content"):
-        content = st.session_state.demo_content
-        is_demo_mode = True
+        st.session_state.use_demo = False
+    elif st.session_state.use_demo:
+        content = DEMO_HANDS_TEXT
+        st.sidebar.warning("🦁 目前正在展示 Demo 牌譜 (共36手)")
+    else:
+        content = None
     
-    if not content:
-        # 未上傳檔案且無 Demo：顯示歡迎畫面
-        st.header("👋 歡迎來到 Poker Copilot")
-        if st.button("🎲 我沒檔案，先載入範例試玩", type="primary", key="main_demo_btn"):
-            st.session_state.demo_content = DEMO_HANDS_TEXT
-            st.rerun()
-    elif content:
-        # Demo 模式提示
-        if is_demo_mode:
-            st.warning("🦁 目前正在展示 Demo 牌譜 (共3手)，請點擊左側列表切換手牌")
+    # 主畫面大按鈕 (當沒有內容時顯示)
+    if content is None:
+        st.markdown("---")
+        st.markdown("### 👋 歡迎來到 Poker Copilot")
+        st.markdown("這是一個使用 AI 幫你覆盤撲克比賽的工具。你可以上傳 GG Poker 的手牌紀錄，或是...")
         
+        col_demo_btn, _ = st.columns([1, 2])
+        with col_demo_btn:
+            if st.button("🎲 我沒檔案，先載入範例試玩看看", type="primary", key="main_demo_btn"):
+                st.session_state.use_demo = True
+                st.rerun()
+
+    if content:
         # 呼叫解析函數
         hands, hero_name = parse_hands(content)
 
@@ -749,15 +692,20 @@ else:
                         hand_data = filtered_hands[selected_index]
                 
                 with col_detail:
-                    # AI 分析按鈕（置頂，無需捲動）
-                    st.markdown("### 🕵️ 手牌細節")
+                    # --- AI 分析區塊 (置頂) ---
+                    st.markdown("### 🤖 AI 教練分析")
+                    analyze_clicked = st.button(f"立即分析這手牌", key="analyze_btn", use_container_width=True)
+                    
+                    # --- 系統資訊 ---
                     sys_position = hand_data.get("position", "Other")
                     sys_cards = hand_data.get("hero_cards_emoji") or cards_to_emoji(hand_data.get("hero_cards"))
-                    if st.button(f"🤖 AI 分析這手牌", key="analyze_btn", use_container_width=True):
+                    st.caption(f"📍 **系統判定**：位置 {sys_position} | 手牌 {sys_cards}")
+
+                    # --- 執行分析 ---
+                    if analyze_clicked:
                         with st.spinner(random.choice(LOADING_TEXTS)):
                             analysis = analyze_specific_hand(hand_data, api_key, selected_model)
                             st.markdown("### 💡 AI 分析結果")
-                            st.caption(f"📍 **系統鎖定**：位置 {sys_position} | 手牌 {sys_cards}")
                             parts = analysis.split("===SPLIT===")
                             summary_text = parts[0].strip() if parts else ""
                             detail_text = parts[1].strip() if len(parts) > 1 else ""
@@ -767,5 +715,9 @@ else:
                             else:
                                 st.markdown(analysis)
                     else:
-                        st.caption(f"📍 **系統判定**：位置 {sys_position} | 手牌 {sys_cards}")
-                        st.info("👆 點擊上方按鈕，讓 AI 分析這手牌的決策。")
+                        st.info("👆 點擊上方按鈕，查看教練建議")
+
+                    # --- 手牌原始紀錄 (移到底部) ---
+                    st.divider()
+                    with st.expander("查看原始手牌紀錄"):
+                        st.text(hand_data.get("content", ""))
