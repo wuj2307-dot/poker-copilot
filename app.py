@@ -2274,100 +2274,206 @@ Seat 8: cb195c66 collected (700)
 # --- 1. 頁面設定 ---
 st.set_page_config(page_title="Poker Copilot War Room", page_icon="♠️", layout="wide")
 
-# --- CSS 優化 (戰情室風格) ---
+# --- CSS: Apple HIG macOS Dark Mode ---
 st.markdown("""
 <style>
-    /* 1. 全局背景與字體設定 */
+    /* 1. Typography — System font, hierarchy by weight */
     .stApp {
-        background-color: #0e1117;
-        font-family: 'Inter', sans-serif;
+        background-color: #1c1c1e;
+        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+        font-weight: 400;
+        -webkit-font-smoothing: antialiased;
     }
-    
-    /* 2. 去除 Streamlit 原生元素 (Header, Footer, Hamburger) */
-    header[data-testid="stHeader"] {visibility: hidden;}
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    
-    /* 3. 數據指標卡片 (Metrics) - 霓虹發光效果 */
+    .stApp h1 { font-weight: 700; color: rgba(255,255,255,0.95); }
+    .stApp h2, .stApp h3 { font-weight: 600; color: rgba(255,255,255,0.9); }
+    .stApp p, .stApp span { color: rgba(255,255,255,0.85); }
+
+    /* 2. Hide Streamlit chrome */
+    header[data-testid="stHeader"] { visibility: hidden; }
+    #MainMenu { visibility: hidden; }
+    footer { visibility: hidden; }
+
+    /* 3. Metrics — Apple Stocks style: large, thin, crisp */
     div[data-testid="stMetricValue"] {
-        font-size: 32px !important;
-        font-weight: 700 !important;
-        color: #00FF99 !important; /* 賽博龐克綠 */
-        text-shadow: 0 0 15px rgba(0, 255, 153, 0.4);
+        font-size: 34px !important;
+        font-weight: 300 !important;
+        color: #30D158 !important;
+        letter-spacing: -0.5px;
     }
     div[data-testid="stMetricLabel"] {
-        font-size: 14px !important;
-        color: #8899A6 !important;
+        font-size: 13px !important;
+        color: rgba(255,255,255,0.55) !important;
         font-weight: 500;
-        letter-spacing: 1px;
     }
     div[data-testid="stMetricDelta"] {
-        color: #FF4B4B !important; /* 警示紅 */
+        color: #FF453A !important;
+        font-weight: 500;
     }
 
-    /* 4. 按鈕優化 (Primary Button) - 漸層按鈕 */
+    /* 4. Buttons — Pill shape, iOS-style gradient */
+    div.stButton > button {
+        font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+        border-radius: 99px !important;
+        font-weight: 600;
+        transition: opacity 0.2s ease, transform 0.15s ease;
+    }
     div.stButton > button[kind="primary"] {
-        background: linear-gradient(90deg, #FF4B4B 0%, #FF9068 100%);
-        border: none;
-        color: white;
-        font-weight: bold;
-        transition: all 0.3s ease;
+        background: linear-gradient(180deg, #0A84FF 0%, #0066CC 100%) !important;
+        border: 1px solid rgba(255,255,255,0.12);
+        color: #fff !important;
     }
     div.stButton > button[kind="primary"]:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 5px 15px rgba(255, 75, 75, 0.4);
+        opacity: 0.92;
+        transform: scale(1.02);
+    }
+    div.stButton > button:not([kind="primary"]) {
+        background: rgba(255,255,255,0.08) !important;
+        border: 1px solid rgba(255,255,255,0.1);
+        color: rgba(255,255,255,0.9) !important;
     }
 
-    /* 5. 側邊欄優化 */
+    /* 5. Sidebar — Glassmorphism */
     section[data-testid="stSidebar"] {
-        background-color: #161B22;
-        border-right: 1px solid #30363D;
+        background: rgba(28, 28, 30, 0.72) !important;
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        border-right: 1px solid rgba(255,255,255,0.08);
     }
-    
-    /* 6. Tab 選單優化 */
+    section[data-testid="stSidebar"] * { color: rgba(255,255,255,0.85); }
+
+    /* 6. Tabs — Minimal, weight hierarchy */
     .stTabs [data-baseweb="tab-list"] {
-        gap: 8px;
-        border-bottom: 1px solid #30363D;
+        gap: 4px;
+        border-bottom: 1px solid rgba(255,255,255,0.08);
     }
     .stTabs [data-baseweb="tab"] {
-        height: 50px;
-        background-color: transparent;
+        height: 48px;
+        background: transparent;
         border: none;
-        color: #8899A6;
-        font-weight: 600;
+        color: rgba(255,255,255,0.5);
+        font-weight: 500;
+        font-family: -apple-system, BlinkMacSystemFont, sans-serif;
     }
     .stTabs [aria-selected="true"] {
-        color: #00FF99 !important;
-        border-bottom: 2px solid #00FF99 !important;
+        color: #0A84FF !important;
+        font-weight: 600;
+        border-bottom: 2px solid #0A84FF !important;
     }
-    
-    /* 7. 卡片容器 (Container) */
-    /* div[data-testid="stVerticalBlock"] > div[data-testid="stVerticalBlock"] { border: 1px solid #30363D; border-radius: 8px; padding: 10px; } */
-    
-    /* 8. 引用區塊 (教練狠評) */
+
+    /* 7. Cards / Containers — Glass + depth border (Leak Detector, etc.) */
+    div[data-testid="stVerticalBlock"] > div[data-testid="stVerticalBlock"] {
+        background: rgba(44, 44, 46, 0.6);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        border: 1px solid rgba(255,255,255,0.1);
+        border-radius: 12px;
+        padding: 16px;
+    }
+
+    /* 8. Blockquote (教練狠評) */
     blockquote {
-        background-color: #1e2130;
-        border-left: 5px solid #ff4b4b;
-        padding: 15px;
-        border-radius: 5px;
-        color: #e0e0e0;
-        font-size: 16px;
+        background: rgba(44, 44, 46, 0.7);
+        border: 1px solid rgba(255,255,255,0.08);
+        border-left: 4px solid #0A84FF;
+        padding: 16px 20px;
+        border-radius: 10px;
+        color: rgba(255,255,255,0.9);
+        font-size: 15px;
         margin: 20px 0;
     }
 
-    /* 9. 手牌紀錄 — Chat 風格 (Tab 2 Hand History) */
+    /* 9. Dataframe — Apple Numbers style: clean headers, minimal grid */
+    div[data-testid="stDataFrame"] {
+        background: rgba(44, 44, 46, 0.5) !important;
+        border: 1px solid rgba(255,255,255,0.1);
+        border-radius: 10px;
+        overflow: hidden;
+    }
+    div[data-testid="stDataFrame"] table {
+        border-collapse: collapse;
+        font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+    div[data-testid="stDataFrame"] th {
+        background: rgba(255,255,255,0.06) !important;
+        color: rgba(255,255,255,0.9) !important;
+        font-weight: 600;
+        font-size: 12px;
+        text-transform: none;
+        letter-spacing: 0.2px;
+        border-bottom: 1px solid rgba(255,255,255,0.12);
+        padding: 10px 14px;
+    }
+    div[data-testid="stDataFrame"] td {
+        border-bottom: 1px solid rgba(255,255,255,0.06);
+        color: rgba(255,255,255,0.85);
+        padding: 10px 14px;
+        font-size: 13px;
+    }
+    div[data-testid="stDataFrame"] tr:hover td {
+        background: rgba(255,255,255,0.04);
+    }
+
+    /* 10. Hand History — Chat (HIG-aligned colors) */
     .hand-chat-container { max-width: 100%; padding: 8px 0; }
-    .hand-chat-header { text-align: center; font-size: 13px; color: #8899A6; margin-bottom: 12px; padding: 8px 12px; background: #161B22; border-radius: 8px; border: 1px solid #30363D; }
+    .hand-chat-header {
+        text-align: center;
+        font-size: 13px;
+        font-weight: 500;
+        color: rgba(255,255,255,0.55);
+        margin-bottom: 12px;
+        padding: 10px 14px;
+        background: rgba(44, 44, 46, 0.6);
+        backdrop-filter: blur(12px);
+        border-radius: 10px;
+        border: 1px solid rgba(255,255,255,0.1);
+    }
     .hand-chat-street-badge { text-align: center; margin: 14px 0 10px 0; }
-    .hand-chat-street-badge .street-label { font-size: 11px; color: #8899A6; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; }
+    .hand-chat-street-badge .street-label {
+        font-size: 11px;
+        font-weight: 600;
+        color: rgba(255,255,255,0.5);
+        text-transform: uppercase;
+        letter-spacing: 0.8px;
+        margin-bottom: 6px;
+    }
     .hand-chat-street-badge .street-cards { display: flex; justify-content: center; align-items: center; flex-wrap: wrap; gap: 4px; }
-    .hand-chat-bubble { max-width: 85%; padding: 8px 14px; border-radius: 14px; font-size: 13px; line-height: 1.4; margin: 4px 0; word-break: break-word; }
-    .hand-chat-bubble.chat-left { background: #30363D; color: #c9d1d9; margin-right: auto; border-bottom-left-radius: 4px; }
-    .hand-chat-bubble.chat-right { background: linear-gradient(135deg, #238636 0%, #2ea043 100%); color: #fff; margin-left: auto; border-bottom-right-radius: 4px; }
-    .hand-chat-bubble .actor { font-weight: 700; opacity: 0.9; }
-    .card-badge-chat { display: inline-block; padding: 2px 8px; margin: 0 1px; border-radius: 4px; font-weight: 700; font-size: 14px; background: #fff; border: 1px solid #ddd; }
-    .card-badge-chat.red { color: #c0392b; }
-    .card-badge-chat.black { color: #1a1a1a; }
+    .hand-chat-bubble {
+        max-width: 85%;
+        padding: 10px 16px;
+        border-radius: 16px;
+        font-size: 13px;
+        line-height: 1.4;
+        margin: 5px 0;
+        word-break: break-word;
+        font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+    .hand-chat-bubble.chat-left {
+        background: rgba(58, 58, 60, 0.9);
+        color: rgba(255,255,255,0.9);
+        margin-right: auto;
+        border-bottom-left-radius: 4px;
+        border: 1px solid rgba(255,255,255,0.08);
+    }
+    .hand-chat-bubble.chat-right {
+        background: linear-gradient(180deg, rgba(10, 132, 255, 0.35) 0%, rgba(0, 102, 204, 0.4) 100%);
+        color: #fff;
+        margin-left: auto;
+        border-bottom-right-radius: 4px;
+        border: 1px solid rgba(255,255,255,0.15);
+    }
+    .hand-chat-bubble .actor { font-weight: 600; }
+    .card-badge-chat {
+        display: inline-block;
+        padding: 3px 8px;
+        margin: 0 2px;
+        border-radius: 6px;
+        font-weight: 600;
+        font-size: 13px;
+        background: rgba(255,255,255,0.95);
+        border: 1px solid rgba(0,0,0,0.08);
+    }
+    .card-badge-chat.red { color: #D32F2F; }
+    .card-badge-chat.black { color: #1c1c1e; }
 </style>
 """, unsafe_allow_html=True)
 
