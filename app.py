@@ -560,11 +560,6 @@ else:
         st.session_state.use_demo = False
 
     uploaded_file = st.file_uploader("📂 上傳比賽紀錄 (.txt)", type=["txt"])
-    
-    # 一鍵載入試用牌譜
-    if st.button("🎲 沒檔案？一鍵載入『試用牌譜』", key="demo_load_btn"):
-        st.session_state.use_demo = True
-        st.rerun()
 
     if uploaded_file:
         content = load_content(uploaded_file)
