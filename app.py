@@ -2357,6 +2357,7 @@ st.markdown("""
 
     /* 9. 手牌紀錄 — Chat 風格 (Tab 2 Hand History) */
     .hand-chat-container { max-width: 100%; padding: 8px 0; }
+    .hand-chat-header { text-align: center; font-size: 13px; color: #8899A6; margin-bottom: 12px; padding: 8px 12px; background: #161B22; border-radius: 8px; border: 1px solid #30363D; }
     .hand-chat-street-badge { text-align: center; margin: 14px 0 10px 0; }
     .hand-chat-street-badge .street-label { font-size: 11px; color: #8899A6; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; }
     .hand-chat-street-badge .street-cards { display: flex; justify-content: center; align-items: center; flex-wrap: wrap; gap: 4px; }
@@ -2471,10 +2472,70 @@ def _card_badge_chat(card_str):
 def render_hand_history_timeline(hand_content, hero_name="Hero"):
     """
     將手牌 log 解析為「聊天介面」風格：只顯示重要下注與公牌，對手左灰泡、Hero 右綠泡。
+    顯示 Level/Blinds 標題、玩家 ID 換成桌位、籌碼換成 BB。
     """
     if not hand_content or not hand_content.strip():
         st.caption("無手牌內容")
         return
+
+    # --- 1. 解析 Level / Blinds（標題與 BB 換算）---
+    level_match = re.search(r"Level(\d+)\(([\d,]+)/([\d,]+)\)", hand_content)
+    if level_match:
+        level_num = level_match.group(1)
+        sb_str = level_match.group(2).replace(",", "")
+        bb_str = level_match.group(3).replace(",", "")
+        bb_size = int(bb_str) if bb_str else 400
+        header_text = f"🏆 Level: {level_num} | Blinds: {sb_str}/{bb_str}"
+    else:
+        bb_fallback = re.search(r"posts big blind ([\d,]+)", hand_content)
+        bb_size = int(bb_fallback.group(1).replace(",", "")) if bb_fallback else 400
+        header_text = f"🏆 Blinds: —/{bb_size}"
+
+    # --- 2. 建立 Player ID -> 桌位 對照（Seat #X is the button + Seat X: playerId）---
+    btn_match = re.search(r"Seat #(\d+) is the button", hand_content)
+    button_seat = int(btn_match.group(1)) if btn_match else None
+    seats_dict = {}
+    for m in re.finditer(r"Seat (\d+): (\S+)", hand_content):
+        sn, pid = m.group(1), m.group(2)
+        if sn not in seats_dict:
+            seats_dict[sn] = pid
+    total_seats = sorted([int(s) for s in seats_dict.keys()]) if seats_dict else []
+    id_to_position = {}
+    for sn in total_seats:
+        pid = seats_dict[str(sn)]
+        id_to_position[pid] = calculate_position(sn, button_seat, total_seats)
+    id_to_position[hero_name] = "Hero"
+
+    def to_bb(amount_str):
+        try:
+            return int(amount_str.replace(",", "")) / bb_size if bb_size else 0
+        except (ValueError, AttributeError):
+            return 0
+
+    def format_action_bb(line):
+        """將行內籌碼數字改為 BB（1 位小數）。"""
+        # raises X to Y [and is all-in]
+        line = re.sub(
+            r"raises ([\d,]+) to ([\d,]+)( and is all-in)?",
+            lambda m: f"raises {to_bb(m.group(1)):.1f} to {to_bb(m.group(2)):.1f} BB" + (m.group(3) or ""),
+            line,
+        )
+        line = re.sub(r"bets ([\d,]+)", lambda m: f"bets {to_bb(m.group(1)):.1f} BB", line)
+        line = re.sub(
+            r"calls ([\d,]+)( and is all-in)?",
+            lambda m: f"calls {to_bb(m.group(1)):.1f} BB" + (m.group(2) or ""),
+            line,
+        )
+        return line
+
+    def replace_speaker_with_position(line):
+        """將行首的 Player ID 換成桌位（或 Hero）。"""
+        if ": " not in line:
+            return line
+        speaker, rest = line.split(": ", 1)
+        speaker = speaker.strip()
+        pos = id_to_position.get(speaker, speaker)
+        return f"{pos}: {rest}"
 
     # 噪音過濾：含這些關鍵字的行不顯示
     IGNORE_SUBSTRINGS = [
@@ -2513,9 +2574,9 @@ def render_hand_history_timeline(hand_content, hero_name="Hero"):
             segments.append((street_name, body))
 
     out = ['<div class="hand-chat-container">']
+    out.append(f'<div class="hand-chat-header">{html.escape(header_text)}</div>')
 
     for street_name, body in segments:
-        # SHOWDOWN / SUMMARY 不輸出動作行
         if street_name in ("SHOWDOWN", "SUMMARY"):
             continue
 
@@ -2523,7 +2584,6 @@ def render_hand_history_timeline(hand_content, hero_name="Hero"):
         first_line = lines[0] if lines else ""
         start_idx = 0
 
-        # FLOP / TURN / RIVER：置中街道 badge（公牌）
         if street_name in ("FLOP", "TURN", "RIVER"):
             board_cards = re.findall(r"\[([A-Za-z0-9\s]+)\]", first_line)
             if board_cards:
@@ -2537,13 +2597,13 @@ def render_hand_history_timeline(hand_content, hero_name="Hero"):
                 out.append("</div></div>")
                 start_idx = 1
 
-        # 只輸出通過過濾的動作行
         for line in lines[start_idx:]:
             if should_ignore_line(line) or not is_active_action(line):
                 continue
-            # 顯示為「名字: 動作」；可選：把牌面代碼換成 badge（此處保持簡短文字）
+            line = replace_speaker_with_position(line)
+            line = format_action_bb(line)
             line_safe = html.escape(line)
-            is_hero = is_hero_line(line)
+            is_hero = line.strip().startswith("Hero:")
             bubble_cls = "hand-chat-bubble chat-right" if is_hero else "hand-chat-bubble chat-left"
             out.append(f'<div class="{bubble_cls}">{line_safe}</div>')
 
@@ -3189,7 +3249,7 @@ else:
                         st.info("此分類無手牌")
                         hand_data = hands[0] if hands else {}
                     else:
-                        # Build dataframe: Hand #, Position, Hole Cards (Emoji), Pot Size, Result
+                        # Build dataframe: Hand #, Position, Hole Cards, Result (no Pot column)
                         result_label = {"win": "Win", "loss": "Loss", "fold": "Fold"}
                         rows = []
                         for h in filtered_hands:
@@ -3197,11 +3257,9 @@ else:
                                 "Hand #": h.get("display_index", 0),
                                 "Position": h.get("position", "—"),
                                 "Hole Cards": h.get("hero_cards_emoji") or cards_to_emoji(h.get("hero_cards")),
-                                "Pot": h.get("pot_size") or h.get("total_pot", 0),
                                 "Result": result_label.get(h.get("result"), "—"),
                             })
                         hand_df = pd.DataFrame(rows)
-                        # Highlight Loss rows with reddish background
                         def highlight_loss(row):
                             if row.get("Result") == "Loss":
                                 return ["background-color: rgba(255, 75, 75, 0.25)"] * len(row)
