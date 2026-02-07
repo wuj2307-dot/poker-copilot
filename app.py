@@ -2552,6 +2552,9 @@ st.markdown("""
 st.title("♠️ Poker Copilot War Room")
 st.caption("🚀 AI 驅動的德州撲克戰術分析系統 | 你的 24/7 私人教練")
 
+# 登入狀態由 session 持久化，方便手機端在主畫面驗證
+api_key = st.session_state.get("api_key")
+
 # 單手分析時的隨機等待文案
 LOADING_TEXTS = [
     "正在計算死錢賠率...",
@@ -2561,20 +2564,8 @@ LOADING_TEXTS = [
 ]
 
 
-# --- 2. 側邊欄：驗證與設定 ---
+# --- 2. 側邊欄：僅在已登入時顯示設定 ---
 with st.sidebar:
-    st.header("🔐 身份驗證")
-    user_password = st.text_input("輸入通關密碼 (Access Code)", type="password")
-    api_key = None
-    
-    if user_password == st.secrets["ACCESS_PASSWORD"]:
-        st.success("✅ 驗證通過！")
-        api_key = st.secrets["GEMINI_API_KEY"]
-    elif user_password:
-        st.error("❌ 密碼錯誤")
-
-    st.divider()
-
     if api_key:
         st.header("⚙️ 設定")
         selected_model = st.selectbox("AI 引擎", ["gemini-2.5-flash"])
@@ -3256,6 +3247,7 @@ GTO 在這裡是非常明確的：面對早位強勢加注，JTo 這種雜色牌
 # --- 4. 主介面邏輯 ---
 
 if not api_key:
+    # 主畫面登入：標題已在頂部，此處為密碼輸入與 Demo 按鈕（手機友善）
     st.markdown("""
     <div style='background-color: #161B22; padding: 20px; border-radius: 10px; border-left: 5px solid #00FF99;'>
         👋 <b>歡迎來到戰情室！</b><br>
@@ -3267,7 +3259,18 @@ if not api_key:
     </div>
     <br>
     """, unsafe_allow_html=True)
-    st.info("👈 請先在左側輸入通關密碼才能使用。")
+    st.markdown("---")
+    user_password = st.text_input("Enter Access Code (通關密碼)", type="password", key="main_access_code", placeholder="請輸入通關密碼")
+    if user_password == st.secrets["ACCESS_PASSWORD"]:
+        st.session_state["api_key"] = st.secrets["GEMINI_API_KEY"]
+        st.success("✅ 驗證通過！")
+        st.rerun()
+    elif user_password:
+        st.error("❌ 密碼錯誤")
+    st.markdown("---")
+    if st.button("🎲 我沒檔案，先載入範例試玩看看", type="primary", key="login_demo_btn"):
+        st.session_state.use_demo = True
+        st.info("請先輸入正確通關密碼，即可使用範例牌譜試玩。")
 else:
     # session_state：一鍵試用 Demo 模式
     if "use_demo" not in st.session_state:
@@ -3280,7 +3283,6 @@ else:
         st.session_state.use_demo = False
     elif st.session_state.use_demo:
         content = DEMO_HANDS_TEXT
-        st.sidebar.warning("🦁 目前正在展示 Demo 牌譜 (共36手)")
     else:
         content = None
     
