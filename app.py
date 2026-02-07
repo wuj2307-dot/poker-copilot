@@ -2277,11 +2277,13 @@ st.set_page_config(page_title="Poker Copilot War Room", page_icon="♠️", layo
 # --- CSS: Apple HIG macOS Dark Mode ---
 st.markdown("""
 <style>
-    /* 1. Typography — System font, hierarchy by weight */
+    /* 1. Typography — Inter + Noto Sans TC for clean Latin & Chinese (Minduck-style) */
     .stApp {
         background-color: #1c1c1e;
-        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+        font-family: 'Inter', 'Noto Sans TC', 'Microsoft JhengHei', sans-serif;
         font-weight: 400;
+        line-height: 1.6;
+        letter-spacing: 0.05em;
         -webkit-font-smoothing: antialiased;
     }
     .stApp h1 { font-weight: 700; color: rgba(255,255,255,0.95); }
@@ -2312,7 +2314,7 @@ st.markdown("""
 
     /* 4. Buttons — Pill shape, iOS-style gradient */
     div.stButton > button {
-        font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+        font-family: 'Inter', 'Noto Sans TC', 'Microsoft JhengHei', sans-serif;
         border-radius: 99px !important;
         font-weight: 600;
         transition: opacity 0.2s ease, transform 0.15s ease;
@@ -2352,7 +2354,7 @@ st.markdown("""
         border: none;
         color: rgba(255,255,255,0.5);
         font-weight: 500;
-        font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+        font-family: 'Inter', 'Noto Sans TC', 'Microsoft JhengHei', sans-serif;
     }
     .stTabs [aria-selected="true"] {
         color: #0A84FF !important;
@@ -2391,7 +2393,7 @@ st.markdown("""
     }
     div[data-testid="stDataFrame"] table {
         border-collapse: collapse;
-        font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+        font-family: 'Inter', 'Noto Sans TC', 'Microsoft JhengHei', sans-serif;
     }
     div[data-testid="stDataFrame"] th {
         background: rgba(255,255,255,0.06) !important;
@@ -2445,7 +2447,7 @@ st.markdown("""
         line-height: 1.4;
         margin: 5px 0;
         word-break: break-word;
-        font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+        font-family: 'Inter', 'Noto Sans TC', 'Microsoft JhengHei', sans-serif;
     }
     .hand-chat-bubble.chat-left {
         background: rgba(58, 58, 60, 0.9);
