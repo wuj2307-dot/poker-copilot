@@ -3,6 +3,7 @@ import re
 import requests
 import json
 import random
+import pandas as pd
 from datetime import datetime
 
 # Demo 資料：真實比賽紀錄 (36 手牌，內嵌於 app.py)
@@ -3061,19 +3062,37 @@ else:
                         st.info("此分類無手牌")
                         hand_data = hands[0] if hands else {}
                     else:
-                        def format_filtered_label(i):
-                            hand = filtered_hands[i]
-                            hand_num = hand.get("display_index", i + 1)
-                            cards_display = cards_to_emoji(hand.get("hero_cards"))
-                            return f"Hand #{hand_num}: {cards_display}"
-                        
-                        selected_index = st.radio(
-                            "選擇手牌",
-                            range(len(filtered_hands)),
-                            format_func=format_filtered_label,
-                            key="hand_radio"
+                        # Build dataframe: Hand #, Position, Hole Cards (Emoji), Pot Size, Result
+                        result_label = {"win": "Win", "loss": "Loss", "fold": "Fold"}
+                        rows = []
+                        for h in filtered_hands:
+                            rows.append({
+                                "Hand #": h.get("display_index", 0),
+                                "Position": h.get("position", "—"),
+                                "Hole Cards": h.get("hero_cards_emoji") or cards_to_emoji(h.get("hero_cards")),
+                                "Pot": h.get("pot_size") or h.get("total_pot", 0),
+                                "Result": result_label.get(h.get("result"), "—"),
+                            })
+                        hand_df = pd.DataFrame(rows)
+                        # Highlight Loss rows with reddish background
+                        def highlight_loss(row):
+                            if row.get("Result") == "Loss":
+                                return ["background-color: rgba(255, 75, 75, 0.25)"] * len(row)
+                            return [""] * len(row)
+                        styled_df = hand_df.style.apply(highlight_loss, axis=1)
+                        event = st.dataframe(
+                            styled_df,
+                            use_container_width=True,
+                            hide_index=True,
+                            on_select="rerun",
+                            selection_mode="single-row",
+                            key="hand_selection_df",
                         )
-                        hand_data = filtered_hands[selected_index]
+                        selected_rows = getattr(event.selection, "rows", []) or []
+                        if selected_rows:
+                            hand_data = filtered_hands[selected_rows[0]]
+                        else:
+                            hand_data = filtered_hands[0]
                 
                 with col_detail:
                     # --- AI 分析區塊 (置頂) ---
