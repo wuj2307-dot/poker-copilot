@@ -2649,6 +2649,44 @@ def parse_hands(content):
 def generate_match_summary(hands_data, vpip, pfr, api_key, model):
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
     
+    total_hands = len(hands_data)
+    vpip_count = sum(1 for h in hands_data if h.get("vpip"))
+    pfr_count = sum(1 for h in hands_data if h.get("pfr"))
+    agg_freq = round((pfr_count / vpip_count) * 100, 1) if vpip_count > 0 else 0.0
+
+    # 位置分組：EP=UTG+UTG+1, MP=MP+MP+1+HJ
+    POS_GROUPS = {
+        "BTN": ["BTN"],
+        "SB": ["SB"],
+        "BB": ["BB"],
+        "EP": ["UTG", "UTG+1"],
+        "MP": ["MP", "MP+1", "HJ"],
+        "CO": ["CO"],
+    }
+
+    def calc_pos_stats(pos_keys):
+        hands_in_pos = [h for h in hands_data if h.get("position") in pos_keys or h.get("position_name") in pos_keys]
+        n = len(hands_in_pos)
+        if n == 0:
+            return "N/A", "N/A", 0
+        v = sum(1 for h in hands_in_pos if h.get("vpip"))
+        p = sum(1 for h in hands_in_pos if h.get("pfr"))
+        vpip_pct = round((v / n) * 100, 1)
+        pfr_pct = round((p / n) * 100, 1)
+        return vpip_pct, pfr_pct, n
+
+    vpip_btn, pfr_btn, _ = calc_pos_stats(POS_GROUPS["BTN"])
+    vpip_sb, pfr_sb, _ = calc_pos_stats(POS_GROUPS["SB"])
+    vpip_bb, pfr_bb, _ = calc_pos_stats(POS_GROUPS["BB"])
+    vpip_ep, pfr_ep, _ = calc_pos_stats(POS_GROUPS["EP"])
+    vpip_mp, pfr_mp, _ = calc_pos_stats(POS_GROUPS["MP"])
+    vpip_co, pfr_co, _ = calc_pos_stats(POS_GROUPS["CO"])
+
+    def fmt_pos(vpip_val, pfr_val):
+        if vpip_val == "N/A" or pfr_val == "N/A":
+            return "N/A"
+        return f"VPIP {vpip_val}% / PFR {pfr_val}%"
+
     # 關鍵手牌篩選：vpip == True，依 pot_size（底池大小）由大到小排序，取前 5 手最大底池
     key_hands_raw = [h for h in hands_data if h.get("vpip")]
     key_hands_raw.sort(key=lambda h: h.get("pot_size", 0), reverse=True)
@@ -2676,9 +2714,16 @@ def generate_match_summary(hands_data, vpip, pfr, api_key, model):
 ---
 
 【整體數據】
-- 總手牌數: {len(hands_data)}
-- VPIP: {vpip}%
-- PFR: {pfr}%
+- 總手牌數: {total_hands}
+- VPIP: {vpip:.1f}% | PFR: {pfr:.1f}% | Agg: {agg_freq:.1f}%
+
+【位置別數據 (Positional Stats)】
+- BTN: {fmt_pos(vpip_btn, pfr_btn)}
+- SB:  {fmt_pos(vpip_sb, pfr_sb)}
+- BB:  {fmt_pos(vpip_bb, pfr_bb)}
+- EP:  {fmt_pos(vpip_ep, pfr_ep)}
+- MP:  {fmt_pos(vpip_mp, pfr_mp)}
+- CO:  {fmt_pos(vpip_co, pfr_co)}
 
 【關鍵手牌（共 5 手，依底池大小選出）】
 以下手牌編號為 Hand #數字，與使用者介面列表完全對應。請依此編號引用，勿使用 TM 等原始 ID。手牌已標註 (Suited) 或 (Offsuit)，請依此解讀花色。
@@ -2690,7 +2735,7 @@ def generate_match_summary(hands_data, vpip, pfr, api_key, model):
 【輸出格式】請務必依以下三個區塊、用 Markdown 撰寫：
 
 ## 🎯 賽事回顧
-請寫一段約 150～200 字的完整段落，像賽後新聞稿一樣，專業地總結選手的風格（鬆/緊、被動/激進）以及本場比賽的主要漏洞。不要只寫一句話。
+請寫一段約 150～200 字的完整段落，像賽後新聞稿一樣，專業地總結選手的風格（鬆/緊、被動/激進）以及本場比賽的主要漏洞。**務必結合「位置別數據」指出特定位置的漏洞**（例如 BB 防守過緊、BTN 開池過少等）。不要只寫一句話。
 
 ## 🔥 關鍵戰役覆盤
 針對上述 5 手大底池手牌，分析 Hero 在大底池處理上的優缺點。每當提到某一手時，必須標註「Hand #數字」（例如 Hand #3、Hand #12），與介面列表一致。
