@@ -2272,50 +2272,77 @@ Seat 8: cb195c66 collected (700)
 # --- 1. 頁面設定 ---
 st.set_page_config(page_title="Poker Copilot War Room", page_icon="♠️", layout="wide")
 
-# CSS 優化 (數據卡片樣式)
+# --- CSS 優化 (戰情室風格) ---
 st.markdown("""
 <style>
-    /* Tab 樣式 */
-    .stTabs [data-baseweb="tab-list"] { gap: 24px; }
-    .stTabs [data-baseweb="tab"] { 
-        height: 50px; 
-        white-space: pre-wrap; 
-        background-color: #0e1117; 
-        border-radius: 4px 4px 0px 0px; 
-        padding: 10px; 
+    /* 1. 全局背景與字體設定 */
+    .stApp {
+        background-color: #0e1117;
+        font-family: 'Inter', sans-serif;
     }
     
-    /* Metric 數據卡片樣式 */
-    div[data-testid="stMetricValue"] { 
-        font-size: 36px; 
-        font-weight: 700;
-        color: #00FF88;
-        text-shadow: 0 0 10px rgba(0, 255, 136, 0.3);
-    }
+    /* 2. 去除 Streamlit 原生元素 (Header, Footer, Hamburger) */
+    header[data-testid="stHeader"] {visibility: hidden;}
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
     
-    div[data-testid="stMetricLabel"] { 
-        font-size: 14px; 
-        font-weight: 600;
-        color: #AAAAAA;
-        text-transform: uppercase;
+    /* 3. 數據指標卡片 (Metrics) - 霓虹發光效果 */
+    div[data-testid="stMetricValue"] {
+        font-size: 32px !important;
+        font-weight: 700 !important;
+        color: #00FF99 !important; /* 賽博龐克綠 */
+        text-shadow: 0 0 15px rgba(0, 255, 153, 0.4);
+    }
+    div[data-testid="stMetricLabel"] {
+        font-size: 14px !important;
+        color: #8899A6 !important;
+        font-weight: 500;
         letter-spacing: 1px;
     }
-    
-    /* Metric 容器卡片效果 */
-    div[data-testid="stMetric"] {
-        background: linear-gradient(145deg, #1a1a2e, #16213e);
-        border: 1px solid #2a2a4a;
-        border-radius: 12px;
-        padding: 20px 16px;
-        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
-    }
-    
-    /* Metric delta (變化值) 樣式 */
     div[data-testid="stMetricDelta"] {
-        font-size: 12px;
+        color: #FF4B4B !important; /* 警示紅 */
+    }
+
+    /* 4. 按鈕優化 (Primary Button) - 漸層按鈕 */
+    div.stButton > button[kind="primary"] {
+        background: linear-gradient(90deg, #FF4B4B 0%, #FF9068 100%);
+        border: none;
+        color: white;
+        font-weight: bold;
+        transition: all 0.3s ease;
+    }
+    div.stButton > button[kind="primary"]:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 5px 15px rgba(255, 75, 75, 0.4);
+    }
+
+    /* 5. 側邊欄優化 */
+    section[data-testid="stSidebar"] {
+        background-color: #161B22;
+        border-right: 1px solid #30363D;
     }
     
-    /* 優化引用區塊 (Blockquote) 樣式 - 用於顯示教練狠評 */
+    /* 6. Tab 選單優化 */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 8px;
+        border-bottom: 1px solid #30363D;
+    }
+    .stTabs [data-baseweb="tab"] {
+        height: 50px;
+        background-color: transparent;
+        border: none;
+        color: #8899A6;
+        font-weight: 600;
+    }
+    .stTabs [aria-selected="true"] {
+        color: #00FF99 !important;
+        border-bottom: 2px solid #00FF99 !important;
+    }
+    
+    /* 7. 卡片容器 (Container) */
+    /* div[data-testid="stVerticalBlock"] > div[data-testid="stVerticalBlock"] { border: 1px solid #30363D; border-radius: 8px; padding: 10px; } */
+    
+    /* 8. 引用區塊 (教練狠評) */
     blockquote {
         background-color: #1e2130;
         border-left: 5px solid #ff4b4b;
@@ -2328,8 +2355,8 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.title("Poker Copilot: Beta 🚀")
-st.caption("內部測試版 | 請輸入通關密碼")
+st.title("♠️ Poker Copilot War Room")
+st.caption("🚀 AI 驅動的德州撲克戰術分析系統 | 你的 24/7 私人教練")
 
 # 單手分析時的隨機等待文案
 LOADING_TEXTS = [
@@ -2863,6 +2890,17 @@ GTO 在這裡是非常明確的：面對早位強勢加注，JTo 這種雜色牌
 # --- 4. 主介面邏輯 ---
 
 if not api_key:
+    st.markdown("""
+    <div style='background-color: #161B22; padding: 20px; border-radius: 10px; border-left: 5px solid #00FF99;'>
+        👋 <b>歡迎來到戰情室！</b><br>
+        這裡不是普通的覆盤工具，這是你的<b>戰術漏洞雷達</b>。<br>
+        上傳 GGPoker 手牌紀錄，AI 將為你：<br>
+        1. 🕵️‍♂️ <b>精準抓漏</b>：自動識別讓你輸錢的關鍵手牌。<br>
+        2. 🦁 <b>教練狠評</b>：用職業視角檢視你的每一個 Decision。<br>
+        3. 📊 <b>風格診斷</b>：分析你的 VPIP/PFR，找出長期盈利阻礙。
+    </div>
+    <br>
+    """, unsafe_allow_html=True)
     st.info("👈 請先在左側輸入通關密碼才能使用。")
 else:
     # session_state：一鍵試用 Demo 模式
@@ -2937,7 +2975,7 @@ else:
                                 st.text(f"📍 {pos} | {cards}")
 
                                 btn_key = f"leak_analyze_{hand.get('display_index')}_{hand.get('id', i)}"
-                                if st.button("🦁 教練幫我看", key=btn_key, use_container_width=True):
+                                if st.button("⚡️ 深度戰術解析", key=btn_key, type="primary", use_container_width=True):
                                     with st.spinner("AI 教練正在重看這手牌..."):
                                         analysis = analyze_specific_hand(hand, api_key, selected_model)
                                         st.success("分析完成！")
