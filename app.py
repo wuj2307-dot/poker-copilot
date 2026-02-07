@@ -1,5 +1,6 @@
 import streamlit as st
 import re
+import html
 import requests
 import json
 import random
@@ -2424,6 +2425,99 @@ def cards_to_emoji(cards_str):
 # 花色對應（與 cards_to_emoji 一致，供 parse_hands 產出 hero_cards_emoji）
 SUIT_EMOJI = {'c': '♣️', 's': '♠️', 'h': '♥️', 'd': '♦️'}
 
+
+def _card_badge(card_str):
+    """單張牌 → 帶顏色的 HTML badge。紅心/方塊紅，黑桃/梅花灰藍。"""
+    card_str = card_str.strip()
+    if len(card_str) < 2:
+        return ""
+    rank, suit = card_str[:-1], card_str[-1].lower()
+    if suit in ("h", "d"):
+        color = "#e74c3c"
+        border = "#c0392b"
+    else:
+        color = "#3498db"
+        border = "#2980b9"
+    emoji = SUIT_EMOJI.get(suit, "")
+    label = html.escape(f"{rank}{emoji}")
+    return f'<span class="timeline-card" style="background:{color};border-color:{border}">{label}</span>'
+
+
+def render_hand_history_timeline(hand_content, hero_name="Hero"):
+    """
+    將原始手牌 log 依街道解析，用垂直時間軸 + 公牌 badge + Hero 行高亮顯示。
+    """
+    if not hand_content or not hand_content.strip():
+        st.caption("無手牌內容")
+        return
+
+    # 依 *** STREET *** 分段（保留街道名）
+    parts = re.split(r"\n\s*\*\*\* (HOLE CARDS|FLOP|TURN|RIVER|SHOWDOWN|SUMMARY) \*\*\*\s*\n?", hand_content)
+    # parts[0] = 開頭（手牌 ID、桌況、ante、blind 等），之後交替：街道名、該段內容
+    intro = (parts[0] or "").strip()
+    segments = []
+    for i in range(1, len(parts) - 1, 2):
+        if i + 1 < len(parts):
+            street_name = parts[i].strip()
+            body = (parts[i + 1] or "").strip()
+            segments.append((street_name, body))
+
+    hero_escaped = re.escape(hero_name)
+    hero_pattern = re.compile(r"^(" + hero_escaped + r":.*)$", re.MULTILINE)
+
+    timeline_html = []
+    timeline_html.append("""
+    <style>
+    .hand-timeline { margin: 12px 0; padding-left: 8px; border-left: 3px solid #30363D; }
+    .hand-timeline-section { margin-bottom: 16px; }
+    .hand-timeline-street { font-weight: 700; color: #00FF99; margin-bottom: 6px; font-size: 14px; }
+    .hand-timeline-board { margin: 8px 0; }
+    .timeline-card { display: inline-block; padding: 4px 10px; margin: 2px; border-radius: 6px; border: 2px solid; color: #fff; font-weight: 700; font-size: 16px; }
+    .hand-timeline-line { font-family: monospace; font-size: 13px; color: #c9d1d9; padding: 2px 0; }
+    .hand-timeline-line.hero { background: linear-gradient(90deg, rgba(255,215,0,0.35) 0%, rgba(255,215,0,0.1) 100%); color: #fff; padding: 4px 8px; border-radius: 4px; margin: 2px 0; border-left: 3px solid #ffd700; }
+    .hand-timeline-intro { font-size: 12px; color: #8899A6; margin-bottom: 12px; white-space: pre-wrap; }
+    </style>
+    <div class="hand-timeline">
+    """)
+
+    if intro:
+        intro_safe = html.escape(intro)
+        timeline_html.append(f'<div class="hand-timeline-intro">{intro_safe}</div>')
+
+    for street_name, body in segments:
+        timeline_html.append(f'<div class="hand-timeline-section">')
+        timeline_html.append(f'<div class="hand-timeline-street">*** {street_name} ***</div>')
+
+        # 公牌：該段第一行若為 [Xx Yy Zz] 或 [Xx Yy Zz] [Ww] 等，拆成多張 badge
+        lines = body.split("\n")
+        first_line = lines[0].strip() if lines else ""
+        board_cards = re.findall(r"\[([A-Za-z0-9\s]+)\]", first_line)
+        if board_cards and street_name in ("FLOP", "TURN", "RIVER"):
+            timeline_html.append('<div class="hand-timeline-board">')
+            for bracket in board_cards:
+                for card in bracket.split():
+                    if re.match(r"^[AKQJT2-9][hdcs]$", card, re.IGNORECASE):
+                        timeline_html.append(_card_badge(card))
+            timeline_html.append("</div>")
+            start_idx = 1
+        else:
+            start_idx = 0
+
+        for line in lines[start_idx:]:
+            line = line.strip()
+            if not line:
+                continue
+            line_safe = html.escape(line)
+            is_hero = bool(hero_pattern.match(line))
+            cls = "hand-timeline-line hero" if is_hero else "hand-timeline-line"
+            timeline_html.append(f'<div class="{cls}">{line_safe}</div>')
+
+        timeline_html.append("</div>")
+
+    timeline_html.append("</div>")
+    st.markdown("".join(timeline_html), unsafe_allow_html=True)
+
+
 def calculate_position(hero_seat, button_seat, total_seats):
     """
     數學定義位置：依順時針距離 Button 計算。
@@ -3095,14 +3189,19 @@ else:
                             hand_data = filtered_hands[0]
                 
                 with col_detail:
-                    # --- AI 分析區塊 (置頂) ---
+                    # --- 手牌紀錄時間軸 (取代原始文字) ---
+                    st.markdown("### 📜 手牌紀錄")
+                    render_hand_history_timeline(
+                        hand_data.get("content", ""),
+                        hero_name=hand_data.get("hero", "Hero"),
+                    )
+                    st.markdown("---")
+                    # --- AI 分析區塊 ---
                     st.markdown("### 🤖 AI 教練分析")
-                    analyze_clicked = st.button(f"立即分析這手牌", key="analyze_btn", use_container_width=True)
-                    
-                    # --- 系統資訊 ---
                     sys_position = hand_data.get("position", "Other")
                     sys_cards = hand_data.get("hero_cards_emoji") or cards_to_emoji(hand_data.get("hero_cards"))
                     st.caption(f"📍 **系統判定**：位置 {sys_position} | 手牌 {sys_cards}")
+                    analyze_clicked = st.button(f"立即分析這手牌", key="analyze_btn", use_container_width=True)
 
                     # --- 執行分析 ---
                     if analyze_clicked:
