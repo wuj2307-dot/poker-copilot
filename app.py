@@ -5,7 +5,6 @@ import requests
 import json
 import random
 import pandas as pd
-import plotly.graph_objects as go
 from datetime import datetime
 
 # Demo 資料：真實比賽紀錄 (36 手牌，內嵌於 app.py)
@@ -3137,8 +3136,6 @@ else:
             
             vpip = round((vpip_count / total_hands) * 100, 1) if total_hands > 0 else 0
             pfr = round((pfr_count / total_hands) * 100, 1) if total_hands > 0 else 0
-            # Aggression Frequency (proxy): (PFR / VPIP) * 100 when VPIP > 0
-            agg = round((pfr_count / vpip_count) * 100, 1) if vpip_count > 0 else 0.0
 
             # --- 智慧抓漏邏輯 ---
             # 篩選條件：Hero 參與 (vpip) 且輸掉 (not is_winner)，依底池大小排序取前 3 手
@@ -3192,33 +3189,7 @@ else:
                 c2.metric("VPIP", f"{vpip}%")
                 c3.metric("PFR", f"{pfr}%")
                 c4.metric("Hero ID", hero_name if hero_name else "Unknown")
-
-                # Radar Chart：VPIP / PFR / Aggression（賽博龐克風格）
-                st.markdown("### 📡 風格雷達")
-                fig = go.Figure()
-                fig.add_trace(go.Scatterpolar(
-                    r=[vpip, pfr, agg],
-                    theta=["VPIP", "PFR", "Aggression"],
-                    fill="toself",
-                    line=dict(color="#00FF99", width=2),
-                    fillcolor="rgba(0, 255, 153, 0.25)",
-                    name="本場數據",
-                ))
-                fig.update_layout(
-                    polar=dict(
-                        radialaxis=dict(visible=True, range=[0, 100], tickfont=dict(color="#e0e0e0"), gridcolor="rgba(48, 54, 61, 0.8)"),
-                        angularaxis=dict(tickfont=dict(color="#e0e0e0"), gridcolor="rgba(48, 54, 61, 0.8)"),
-                        bgcolor="rgba(0,0,0,0)",
-                    ),
-                    paper_bgcolor="rgba(0,0,0,0)",
-                    plot_bgcolor="rgba(0,0,0,0)",
-                    font=dict(color="#e0e0e0", size=12),
-                    showlegend=False,
-                    margin=dict(l=80, r=80, t=40, b=40),
-                    height=380,
-                )
-                st.plotly_chart(fig, use_container_width=True)
-
+                
                 # 分隔線
                 st.divider()
                 
