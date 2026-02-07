@@ -2354,6 +2354,16 @@ st.markdown("""
         font-size: 16px;
         margin: 20px 0;
     }
+
+    /* 9. 手牌紀錄時間軸 (Tab 2 Hand History) */
+    .hand-timeline { margin: 12px 0; padding-left: 8px; border-left: 3px solid #30363D; }
+    .hand-timeline-section { margin-bottom: 16px; }
+    .hand-timeline-street, .street-badge { font-weight: 700; color: #00FF99; margin-bottom: 6px; font-size: 14px; }
+    .hand-timeline-board { margin: 8px 0; }
+    .timeline-card { display: inline-block; padding: 4px 10px; margin: 2px; border-radius: 6px; border: 2px solid; color: #fff; font-weight: 700; font-size: 16px; }
+    .hand-timeline-line { font-family: monospace; font-size: 13px; color: #c9d1d9; padding: 2px 0; }
+    .hand-timeline-line.hero, .hero-action { background: linear-gradient(90deg, rgba(255,215,0,0.35) 0%, rgba(255,215,0,0.1) 100%); color: #fff; padding: 4px 8px; border-radius: 4px; margin: 2px 0; border-left: 3px solid #ffd700; }
+    .hand-timeline-intro { font-size: 12px; color: #8899A6; margin-bottom: 12px; white-space: pre-wrap; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -2465,20 +2475,8 @@ def render_hand_history_timeline(hand_content, hero_name="Hero"):
     hero_escaped = re.escape(hero_name)
     hero_pattern = re.compile(r"^(" + hero_escaped + r":.*)$", re.MULTILINE)
 
-    timeline_html = []
-    timeline_html.append("""
-    <style>
-    .hand-timeline { margin: 12px 0; padding-left: 8px; border-left: 3px solid #30363D; }
-    .hand-timeline-section { margin-bottom: 16px; }
-    .hand-timeline-street { font-weight: 700; color: #00FF99; margin-bottom: 6px; font-size: 14px; }
-    .hand-timeline-board { margin: 8px 0; }
-    .timeline-card { display: inline-block; padding: 4px 10px; margin: 2px; border-radius: 6px; border: 2px solid; color: #fff; font-weight: 700; font-size: 16px; }
-    .hand-timeline-line { font-family: monospace; font-size: 13px; color: #c9d1d9; padding: 2px 0; }
-    .hand-timeline-line.hero { background: linear-gradient(90deg, rgba(255,215,0,0.35) 0%, rgba(255,215,0,0.1) 100%); color: #fff; padding: 4px 8px; border-radius: 4px; margin: 2px 0; border-left: 3px solid #ffd700; }
-    .hand-timeline-intro { font-size: 12px; color: #8899A6; margin-bottom: 12px; white-space: pre-wrap; }
-    </style>
-    <div class="hand-timeline">
-    """)
+    # CSS 已注入至頁首全域 style，此處只輸出 HTML 結構
+    timeline_html = ['<div class="hand-timeline">']
 
     if intro:
         intro_safe = html.escape(intro)
