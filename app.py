@@ -2399,6 +2399,49 @@ st.markdown("""
         padding: 16px;
     }
 
+    /* 7b. Bento Grid — Key Stats & Leak Detector cards (unified card style) */
+    [class*="st-key-key-stat"],
+    [class*="st-key-leak-card"] {
+        background: rgba(255, 255, 255, 0.05) !important;
+        border: 1px solid rgba(255, 255, 255, 0.1) !important;
+        border-radius: 16px !important;
+        padding: 20px !important;
+        backdrop-filter: none;
+    }
+    /* Bento grid layout: 4 equal columns with gap for Key Stats */
+    div[data-testid="stHorizontalBlock"]:has([class*="st-key-key-stat"]) {
+        display: grid !important;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 1.25rem;
+    }
+    div[data-testid="stHorizontalBlock"]:has([class*="st-key-key-stat"]) > div {
+        min-width: 0;
+    }
+    /* Key Stats card typography: label = small, uppercase, tracking-wide */
+    [class*="st-key-key-stat"] div[data-testid="stMetricLabel"] {
+        font-size: 0.7rem !important;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        font-weight: 500;
+        color: rgba(255,255,255,0.55) !important;
+    }
+    /* Key Stats card typography: value = large, bold, Inter */
+    [class*="st-key-key-stat"] div[data-testid="stMetricValue"] {
+        font-size: 1.75rem !important;
+        font-weight: 700 !important;
+        font-family: 'Inter', 'Noto Sans TC', 'Microsoft JhengHei', sans-serif !important;
+        color: rgba(255,255,255,0.95) !important;
+    }
+    /* Leak Detector card headings (Pot, position) — label-like */
+    [class*="st-key-leak-card"] h4,
+    [class*="st-key-leak-card"] .stMarkdown h4 {
+        font-size: 0.75rem !important;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        font-weight: 600;
+        color: rgba(255,255,255,0.7);
+    }
+
     /* 8. Blockquote (教練狠評) */
     blockquote {
         background: rgba(44, 44, 46, 0.7);
@@ -3290,7 +3333,7 @@ else:
                     cols = st.columns(3)
                     for i, hand in enumerate(leak_hands):
                         with cols[i]:
-                            with st.container(border=True):
+                            with st.container(border=True, key=f"leak_card_{i}"):
                                 pot_val = hand.get("total_pot") or hand.get("pot_size", 0)
                                 st.markdown(f"#### 💸 Pot: {pot_val:,}")
                                 pos = hand.get("position", "Other")
@@ -3317,13 +3360,21 @@ else:
 
                 st.divider()
 
-                # 數據卡片區塊
+                # 數據卡片區塊 (Bento Grid)
                 st.markdown("### 📊 關鍵數據")
                 c1, c2, c3, c4 = st.columns(4)
-                c1.metric("總手牌數", total_hands)
-                c2.metric("VPIP", f"{vpip}%")
-                c3.metric("PFR", f"{pfr}%")
-                c4.metric("Hero ID", hero_name if hero_name else "Unknown")
+                with c1:
+                    with st.container(border=True, key="key_stat_0"):
+                        st.metric("總手牌數", total_hands)
+                with c2:
+                    with st.container(border=True, key="key_stat_1"):
+                        st.metric("VPIP", f"{vpip}%")
+                with c3:
+                    with st.container(border=True, key="key_stat_2"):
+                        st.metric("PFR", f"{pfr}%")
+                with c4:
+                    with st.container(border=True, key="key_stat_3"):
+                        st.metric("Hero ID", hero_name if hero_name else "Unknown")
                 
                 # 分隔線
                 st.divider()
