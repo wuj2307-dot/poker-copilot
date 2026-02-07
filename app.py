@@ -2274,23 +2274,22 @@ Seat 8: cb195c66 collected (700)
 # --- 1. 頁面設定 ---
 st.set_page_config(page_title="Poker Copilot War Room", page_icon="♠️", layout="wide")
 
-# --- CSS: Apple HIG macOS Dark Mode ---
+# --- CSS: Apple / macOS Dark Mode (design tokens) ---
 st.markdown("""
 <style>
-    /* 1. Typography — Inter + Noto Sans TC for clean Latin & Chinese (Minduck-style) */
+    /* ─── 1. Global background & typography ─── */
     .stApp {
-        background-color: #1c1c1e;
-        font-family: 'Inter', 'Noto Sans TC', 'Microsoft JhengHei', sans-serif;
+        background-color: #050505 !important;
+        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif !important;
         font-weight: 400;
-        line-height: 1.6;
-        letter-spacing: 0.05em;
         -webkit-font-smoothing: antialiased;
     }
-    .stApp h1 { font-weight: 700; color: rgba(255,255,255,0.95); }
-    .stApp h2, .stApp h3 { font-weight: 600; color: rgba(255,255,255,0.9); }
-    .stApp p, .stApp span { color: rgba(255,255,255,0.85); }
+    .stApp, .stApp p, .stApp span, .stApp div { color: #F5F5F7; }
+    .stApp h1 { font-weight: 700; color: #F5F5F7; }
+    .stApp h2, .stApp h3 { font-weight: 600; color: #F5F5F7; }
+    .stCaption, .stApp small, [data-testid="stMetricLabel"] { color: #86868b !important; }
 
-    /* 1b. Hero Section (SaaS landing style) — title + slogan, centered, gradient */
+    /* Hero: title + slogan, centered */
     div[data-testid="stVerticalBlock"]:has(> h1) {
         text-align: center;
         padding: 3rem 2rem 1rem 2rem;
@@ -2303,7 +2302,6 @@ st.markdown("""
         background-clip: text;
         color: transparent !important;
         margin: 0;
-        letter-spacing: -0.02em;
     }
     div[data-testid="stVerticalBlock"]:has(> h1) + div[data-testid="stVerticalBlock"] {
         text-align: center;
@@ -2312,26 +2310,86 @@ st.markdown("""
     div[data-testid="stVerticalBlock"]:has(> h1) + div[data-testid="stVerticalBlock"] *,
     div[data-testid="stVerticalBlock"]:has(> h1) + div[data-testid="stVerticalBlock"] p,
     div[data-testid="stVerticalBlock"]:has(> h1) + div[data-testid="stVerticalBlock"] small {
-        color: rgba(255,255,255,0.55) !important;
+        color: #86868b !important;
         font-size: 1rem !important;
-        font-weight: 400;
     }
 
-    /* 2. Hide Streamlit chrome */
+    /* ─── 2. Glass card (reusable + applied to Sidebar, Containers, Metrics) ─── */
+    .glass-card,
+    section[data-testid="stSidebar"],
+    div[data-testid="stVerticalBlock"] > div[data-testid="stVerticalBlock"],
+    [class*="st-key-key-stat"],
+    [class*="st-key-leak-card"],
+    div[data-testid="stMetric"],
+    div[data-testid="stDataFrame"],
+    .hand-chat-header,
+    blockquote {
+        background: rgba(28, 28, 30, 0.6) !important;
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        border: 1px solid rgba(255, 255, 255, 0.1) !important;
+        border-radius: 18px !important;
+        box-shadow: 0 4px 24px -1px rgba(0, 0, 0, 0.2);
+    }
+    section[data-testid="stSidebar"] {
+        border-radius: 0 18px 18px 0 !important;
+        border-left: none !important;
+        border-right: 1px solid rgba(255, 255, 255, 0.1) !important;
+    }
+    section[data-testid="stSidebar"] * { color: #F5F5F7; }
+    section[data-testid="stSidebar"] .stCaption { color: #86868b !important; }
+    [class*="st-key-key-stat"],
+    [class*="st-key-leak-card"] { padding: 20px !important; }
+    blockquote {
+        border-left: 4px solid #007AFF !important;
+        padding: 16px 20px !important;
+        color: #F5F5F7 !important;
+        font-size: 15px;
+        margin: 20px 0;
+    }
+
+    /* Bento grid layout */
+    div[data-testid="stHorizontalBlock"]:has([class*="st-key-key-stat"]) {
+        display: grid !important;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 1.25rem;
+    }
+    div[data-testid="stHorizontalBlock"]:has([class*="st-key-key-stat"]) > div { min-width: 0; }
+    [class*="st-key-key-stat"] div[data-testid="stMetricLabel"] {
+        font-size: 0.7rem !important;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: #86868b !important;
+    }
+    [class*="st-key-key-stat"] div[data-testid="stMetricValue"] {
+        font-size: 1.75rem !important;
+        font-weight: 200 !important;
+        color: #F5F5F7 !important;
+    }
+    [class*="st-key-leak-card"] h4,
+    [class*="st-key-leak-card"] .stMarkdown h4 {
+        font-size: 0.75rem !important;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        font-weight: 600;
+        color: #86868b;
+    }
+
     header[data-testid="stHeader"] { visibility: hidden; }
     #MainMenu { visibility: hidden; }
     footer { visibility: hidden; }
 
-    /* 3. Metrics — Apple Stocks style: large, thin, crisp */
+    /* ─── 3. Metrics: Thin & Huge (Apple Stocks) ─── */
     div[data-testid="stMetricValue"] {
-        font-size: 34px !important;
-        font-weight: 300 !important;
-        color: #30D158 !important;
-        letter-spacing: -0.5px;
+        font-size: 2.25rem !important;
+        font-weight: 200 !important;
+        color: #F5F5F7 !important;
+        letter-spacing: -0.02em;
+        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif !important;
     }
     div[data-testid="stMetricLabel"] {
-        font-size: 13px !important;
-        color: rgba(255,255,255,0.55) !important;
+        font-size: 12px !important;
+        color: #86868b !important;
         font-weight: 500;
     }
     div[data-testid="stMetricDelta"] {
@@ -2339,173 +2397,104 @@ st.markdown("""
         font-weight: 500;
     }
 
-    /* 4. Buttons — Pill shape, iOS-style gradient */
+    /* ─── 4. Inputs: iOS-style dark ─── */
+    .stTextInput input,
+    [data-testid="stFileUploader"] section,
+    [data-testid="stFileUploader"] div[data-testid="stVerticalBlock"] {
+        background-color: #1C1C1E !important;
+        border: 1px solid rgba(255, 255, 255, 0.08) !important;
+        border-radius: 12px !important;
+        color: #F5F5F7 !important;
+    }
+    .stTextInput input:focus { box-shadow: 0 0 0 1px rgba(255,255,255,0.15); }
+    [data-testid="stFileUploader"] > div {
+        background: #1C1C1E !important;
+        border: 1px solid rgba(255, 255, 255, 0.08) !important;
+        border-radius: 12px !important;
+    }
+
+    /* ─── 5. Buttons: Apple Blue primary, translucent secondary ─── */
     div.stButton > button {
-        font-family: 'Inter', 'Noto Sans TC', 'Microsoft JhengHei', sans-serif;
-        border-radius: 99px !important;
+        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif !important;
+        border-radius: 12px !important;
         font-weight: 600;
         transition: opacity 0.2s ease, transform 0.15s ease;
     }
     div.stButton > button[kind="primary"] {
-        background: linear-gradient(180deg, #0A84FF 0%, #0066CC 100%) !important;
-        border: 1px solid rgba(255,255,255,0.12);
+        background: linear-gradient(180deg, #007AFF 0%, #0062CC 100%) !important;
+        border: none !important;
         color: #fff !important;
+        box-shadow: 0 1px 0 rgba(255,255,255,0.15) inset;
     }
     div.stButton > button[kind="primary"]:hover {
-        opacity: 0.92;
-        transform: scale(1.02);
+        opacity: 0.9;
+        transform: scale(1.01);
     }
     div.stButton > button:not([kind="primary"]) {
-        background: rgba(255,255,255,0.08) !important;
-        border: 1px solid rgba(255,255,255,0.1);
-        color: rgba(255,255,255,0.9) !important;
+        background: rgba(255, 255, 255, 0.1) !important;
+        border: 1px solid rgba(255, 255, 255, 0.12) !important;
+        color: #F5F5F7 !important;
     }
 
-    /* 5. Sidebar — Glassmorphism */
-    section[data-testid="stSidebar"] {
-        background: rgba(28, 28, 30, 0.72) !important;
-        backdrop-filter: blur(20px);
-        -webkit-backdrop-filter: blur(20px);
-        border-right: 1px solid rgba(255,255,255,0.08);
-    }
-    section[data-testid="stSidebar"] * { color: rgba(255,255,255,0.85); }
-
-    /* 6. Tabs — Minimal, weight hierarchy */
+    /* ─── 6. Tabs ─── */
     .stTabs [data-baseweb="tab-list"] {
         gap: 4px;
-        border-bottom: 1px solid rgba(255,255,255,0.08);
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
     }
     .stTabs [data-baseweb="tab"] {
         height: 48px;
         background: transparent;
         border: none;
-        color: rgba(255,255,255,0.5);
+        color: #86868b;
         font-weight: 500;
-        font-family: 'Inter', 'Noto Sans TC', 'Microsoft JhengHei', sans-serif;
     }
     .stTabs [aria-selected="true"] {
-        color: #0A84FF !important;
+        color: #007AFF !important;
         font-weight: 600;
-        border-bottom: 2px solid #0A84FF !important;
+        border-bottom: 2px solid #007AFF !important;
     }
 
-    /* 7. Cards / Containers — Glass + depth border (Leak Detector, etc.) */
-    div[data-testid="stVerticalBlock"] > div[data-testid="stVerticalBlock"] {
-        background: rgba(44, 44, 46, 0.6);
-        backdrop-filter: blur(20px);
-        -webkit-backdrop-filter: blur(20px);
-        border: 1px solid rgba(255,255,255,0.1);
-        border-radius: 12px;
-        padding: 16px;
-    }
-
-    /* 7b. Bento Grid — Key Stats & Leak Detector cards (unified card style) */
-    [class*="st-key-key-stat"],
-    [class*="st-key-leak-card"] {
-        background: rgba(255, 255, 255, 0.05) !important;
-        border: 1px solid rgba(255, 255, 255, 0.1) !important;
-        border-radius: 16px !important;
-        padding: 20px !important;
-        backdrop-filter: none;
-    }
-    /* Bento grid layout: 4 equal columns with gap for Key Stats */
-    div[data-testid="stHorizontalBlock"]:has([class*="st-key-key-stat"]) {
-        display: grid !important;
-        grid-template-columns: repeat(4, 1fr);
-        gap: 1.25rem;
-    }
-    div[data-testid="stHorizontalBlock"]:has([class*="st-key-key-stat"]) > div {
-        min-width: 0;
-    }
-    /* Key Stats card typography: label = small, uppercase, tracking-wide */
-    [class*="st-key-key-stat"] div[data-testid="stMetricLabel"] {
-        font-size: 0.7rem !important;
-        text-transform: uppercase;
-        letter-spacing: 0.08em;
-        font-weight: 500;
-        color: rgba(255,255,255,0.55) !important;
-    }
-    /* Key Stats card typography: value = large, bold, Inter */
-    [class*="st-key-key-stat"] div[data-testid="stMetricValue"] {
-        font-size: 1.75rem !important;
-        font-weight: 700 !important;
-        font-family: 'Inter', 'Noto Sans TC', 'Microsoft JhengHei', sans-serif !important;
-        color: rgba(255,255,255,0.95) !important;
-    }
-    /* Leak Detector card headings (Pot, position) — label-like */
-    [class*="st-key-leak-card"] h4,
-    [class*="st-key-leak-card"] .stMarkdown h4 {
-        font-size: 0.75rem !important;
-        text-transform: uppercase;
-        letter-spacing: 0.06em;
-        font-weight: 600;
-        color: rgba(255,255,255,0.7);
-    }
-
-    /* 8. Blockquote (教練狠評) */
-    blockquote {
-        background: rgba(44, 44, 46, 0.7);
-        border: 1px solid rgba(255,255,255,0.08);
-        border-left: 4px solid #0A84FF;
-        padding: 16px 20px;
-        border-radius: 10px;
-        color: rgba(255,255,255,0.9);
-        font-size: 15px;
-        margin: 20px 0;
-    }
-
-    /* 9. Dataframe — Apple Numbers style: clean headers, minimal grid */
-    div[data-testid="stDataFrame"] {
-        background: rgba(44, 44, 46, 0.5) !important;
-        border: 1px solid rgba(255,255,255,0.1);
-        border-radius: 10px;
-        overflow: hidden;
-    }
+    /* ─── 7. Dataframe: clean list, no grid, transparent header ─── */
     div[data-testid="stDataFrame"] table {
         border-collapse: collapse;
-        font-family: 'Inter', 'Noto Sans TC', 'Microsoft JhengHei', sans-serif;
+        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
     }
     div[data-testid="stDataFrame"] th {
-        background: rgba(255,255,255,0.06) !important;
-        color: rgba(255,255,255,0.9) !important;
+        background: transparent !important;
+        color: #86868b !important;
         font-weight: 600;
         font-size: 12px;
-        text-transform: none;
-        letter-spacing: 0.2px;
-        border-bottom: 1px solid rgba(255,255,255,0.12);
-        padding: 10px 14px;
+        border: none !important;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        padding: 12px 16px;
     }
     div[data-testid="stDataFrame"] td {
-        border-bottom: 1px solid rgba(255,255,255,0.06);
-        color: rgba(255,255,255,0.85);
-        padding: 10px 14px;
+        border: none !important;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+        color: #F5F5F7;
+        padding: 12px 16px;
         font-size: 13px;
     }
     div[data-testid="stDataFrame"] tr:hover td {
-        background: rgba(255,255,255,0.04);
+        background: rgba(255, 255, 255, 0.04);
     }
 
-    /* 10. Hand History — Chat (HIG-aligned colors) */
+    /* ─── 8. Hand History chat ─── */
     .hand-chat-container { max-width: 100%; padding: 8px 0; }
     .hand-chat-header {
-        text-align: center;
         font-size: 13px;
         font-weight: 500;
-        color: rgba(255,255,255,0.55);
+        color: #86868b;
         margin-bottom: 12px;
-        padding: 10px 14px;
-        background: rgba(44, 44, 46, 0.6);
-        backdrop-filter: blur(12px);
-        border-radius: 10px;
-        border: 1px solid rgba(255,255,255,0.1);
+        padding: 12px 16px;
     }
     .hand-chat-street-badge { text-align: center; margin: 14px 0 10px 0; }
     .hand-chat-street-badge .street-label {
         font-size: 11px;
         font-weight: 600;
-        color: rgba(255,255,255,0.5);
+        color: #86868b;
         text-transform: uppercase;
-        letter-spacing: 0.8px;
+        letter-spacing: 0.06em;
         margin-bottom: 6px;
     }
     .hand-chat-street-badge .street-cards { display: flex; justify-content: center; align-items: center; flex-wrap: wrap; gap: 4px; }
@@ -2517,21 +2506,21 @@ st.markdown("""
         line-height: 1.4;
         margin: 5px 0;
         word-break: break-word;
-        font-family: 'Inter', 'Noto Sans TC', 'Microsoft JhengHei', sans-serif;
+        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
     }
     .hand-chat-bubble.chat-left {
-        background: rgba(58, 58, 60, 0.9);
-        color: rgba(255,255,255,0.9);
+        background: rgba(44, 44, 46, 0.8);
+        color: #F5F5F7;
         margin-right: auto;
         border-bottom-left-radius: 4px;
-        border: 1px solid rgba(255,255,255,0.08);
+        border: 1px solid rgba(255, 255, 255, 0.08);
     }
     .hand-chat-bubble.chat-right {
-        background: linear-gradient(180deg, rgba(10, 132, 255, 0.35) 0%, rgba(0, 102, 204, 0.4) 100%);
+        background: linear-gradient(180deg, #007AFF 0%, #0062CC 100%);
         color: #fff;
         margin-left: auto;
         border-bottom-right-radius: 4px;
-        border: 1px solid rgba(255,255,255,0.15);
+        box-shadow: 0 1px 0 rgba(255,255,255,0.15) inset;
     }
     .hand-chat-bubble .actor { font-weight: 600; }
     .card-badge-chat {
