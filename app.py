@@ -2616,6 +2616,9 @@ def parse_hands(content):
         else:
             result = "fold"
         
+        is_winner = (result == "win")
+        total_pot = pot_size  # 與 pot_size 一致，供智慧抓漏使用
+        
         parsed_hands.append({
             "id": hand_id,
             "content": full_hand_text,
@@ -2632,6 +2635,8 @@ def parse_hands(content):
             "villain_seat": villain_seat,
             "relative_pos_str": relative_pos_str,
             "result": result,
+            "is_winner": is_winner,
+            "total_pot": total_pot,
             "bb_size": bb_size,
             "is_pair": is_pair,
             "is_ax": is_ax,
@@ -2861,10 +2866,51 @@ else:
             vpip = round((vpip_count / total_hands) * 100, 1) if total_hands > 0 else 0
             pfr = round((pfr_count / total_hands) * 100, 1) if total_hands > 0 else 0
 
+            # --- 智慧抓漏邏輯 ---
+            # 篩選條件：Hero 參與 (vpip) 且輸掉 (not is_winner)，依底池大小排序取前 3 手
+            leak_hands = [h for h in hands if h.get("vpip") and not h.get("is_winner", False)]
+            leak_hands.sort(key=lambda h: h.get("total_pot", 0) or h.get("pot_size", 0), reverse=True)
+            leak_hands = leak_hands[:3]
+
             # --- 分頁顯示 (合併為 2 個分頁) ---
             tab1, tab2 = st.tabs(["📊 賽事儀表板", "🔍 手牌深度覆盤"])
 
             with tab1:
+                # --- 關鍵失誤偵測 (置頂) ---
+                st.markdown("### ⚠️ 關鍵失誤偵測 (Smart Leak Detector)")
+                st.caption("系統自動標記了 3 手你輸掉的最大底池，建議優先檢討這些「傷口」。")
+
+                if leak_hands:
+                    cols = st.columns(3)
+                    for i, hand in enumerate(leak_hands):
+                        with cols[i]:
+                            with st.container(border=True):
+                                pot_val = hand.get("total_pot") or hand.get("pot_size", 0)
+                                st.markdown(f"#### 💸 Pot: {pot_val:,}")
+                                pos = hand.get("position", "Other")
+                                cards = hand.get("hero_cards_emoji") or cards_to_emoji(hand.get("hero_cards"))
+                                st.text(f"📍 {pos} | {cards}")
+
+                                btn_key = f"leak_analyze_{hand.get('display_index')}_{hand.get('id', i)}"
+                                if st.button("🦁 教練幫我看", key=btn_key, use_container_width=True):
+                                    with st.spinner("AI 教練正在重看這手牌..."):
+                                        analysis = analyze_specific_hand(hand, api_key, selected_model)
+                                        st.success("分析完成！")
+                                        parts = analysis.split("===SPLIT===")
+                                        summary_text = parts[0].strip() if parts else ""
+                                        detail_text = parts[1].strip() if len(parts) > 1 else ""
+                                        with st.expander("查看教練狠評", expanded=True):
+                                            if summary_text:
+                                                st.info(summary_text, icon="🦁")
+                                            if detail_text:
+                                                st.markdown(detail_text)
+                                            elif not summary_text:
+                                                st.markdown(analysis)
+                else:
+                    st.info("恭喜！這場比賽你似乎沒有輸掉什麼大底池 (或者資料不足)。")
+
+                st.divider()
+
                 # 數據卡片區塊
                 st.markdown("### 📊 關鍵數據")
                 c1, c2, c3, c4 = st.columns(4)
