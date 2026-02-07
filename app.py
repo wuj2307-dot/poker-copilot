@@ -2355,15 +2355,18 @@ st.markdown("""
         margin: 20px 0;
     }
 
-    /* 9. 手牌紀錄時間軸 (Tab 2 Hand History) */
-    .hand-timeline { margin: 12px 0; padding-left: 8px; border-left: 3px solid #30363D; }
-    .hand-timeline-section { margin-bottom: 16px; }
-    .hand-timeline-street, .street-badge { font-weight: 700; color: #00FF99; margin-bottom: 6px; font-size: 14px; }
-    .hand-timeline-board { margin: 8px 0; }
-    .timeline-card { display: inline-block; padding: 4px 10px; margin: 2px; border-radius: 6px; border: 2px solid; color: #fff; font-weight: 700; font-size: 16px; }
-    .hand-timeline-line { font-family: monospace; font-size: 13px; color: #c9d1d9; padding: 2px 0; }
-    .hand-timeline-line.hero, .hero-action { background: linear-gradient(90deg, rgba(255,215,0,0.35) 0%, rgba(255,215,0,0.1) 100%); color: #fff; padding: 4px 8px; border-radius: 4px; margin: 2px 0; border-left: 3px solid #ffd700; }
-    .hand-timeline-intro { font-size: 12px; color: #8899A6; margin-bottom: 12px; white-space: pre-wrap; }
+    /* 9. 手牌紀錄 — Chat 風格 (Tab 2 Hand History) */
+    .hand-chat-container { max-width: 100%; padding: 8px 0; }
+    .hand-chat-street-badge { text-align: center; margin: 14px 0 10px 0; }
+    .hand-chat-street-badge .street-label { font-size: 11px; color: #8899A6; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; }
+    .hand-chat-street-badge .street-cards { display: flex; justify-content: center; align-items: center; flex-wrap: wrap; gap: 4px; }
+    .hand-chat-bubble { max-width: 85%; padding: 8px 14px; border-radius: 14px; font-size: 13px; line-height: 1.4; margin: 4px 0; word-break: break-word; }
+    .hand-chat-bubble.chat-left { background: #30363D; color: #c9d1d9; margin-right: auto; border-bottom-left-radius: 4px; }
+    .hand-chat-bubble.chat-right { background: linear-gradient(135deg, #238636 0%, #2ea043 100%); color: #fff; margin-left: auto; border-bottom-right-radius: 4px; }
+    .hand-chat-bubble .actor { font-weight: 700; opacity: 0.9; }
+    .card-badge-chat { display: inline-block; padding: 2px 8px; margin: 0 1px; border-radius: 4px; font-weight: 700; font-size: 14px; background: #fff; border: 1px solid #ddd; }
+    .card-badge-chat.red { color: #c0392b; }
+    .card-badge-chat.black { color: #1a1a1a; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -2453,18 +2456,55 @@ def _card_badge(card_str):
     return f'<span class="timeline-card" style="background:{color};border-color:{border}">{label}</span>'
 
 
+def _card_badge_chat(card_str):
+    """單張牌 → 聊天風格 HTML badge：白底，紅心/方塊紅字，黑桃/梅花黑字。"""
+    card_str = card_str.strip()
+    if len(card_str) < 2:
+        return ""
+    rank, suit = card_str[:-1], card_str[-1].lower()
+    cls = "card-badge-chat red" if suit in ("h", "d") else "card-badge-chat black"
+    emoji = SUIT_EMOJI.get(suit, "")
+    label = html.escape(f"{rank}{emoji}")
+    return f'<span class="{cls}">{label}</span>'
+
+
 def render_hand_history_timeline(hand_content, hero_name="Hero"):
     """
-    將原始手牌 log 依街道解析，用垂直時間軸 + 公牌 badge + Hero 行高亮顯示。
+    將手牌 log 解析為「聊天介面」風格：只顯示重要下注與公牌，對手左灰泡、Hero 右綠泡。
     """
     if not hand_content or not hand_content.strip():
         st.caption("無手牌內容")
         return
 
-    # 依 *** STREET *** 分段（保留街道名）
+    # 噪音過濾：含這些關鍵字的行不顯示
+    IGNORE_SUBSTRINGS = [
+        "posts the ante", "in chips", "returned to", "collected", "summary",
+        "table", "seat", "posts small blind", "posts big blind", "Dealt to",
+        "Uncalled", "Total pot", "Board ", "Seat ", "shows ", "won (",
+        "and lost", "and won", "folded before", "folded on",
+    ]
+
+    def should_ignore_line(line):
+        low = line.lower()
+        for sub in IGNORE_SUBSTRINGS:
+            if sub.lower() in low:
+                return True
+        return False
+
+    def is_hero_line(line):
+        return line.strip().startswith(hero_name + ":")
+
+    def is_active_action(line):
+        """只保留：bets, calls, raises, checks, all-in；以及 Hero 的 folds。"""
+        if "folds" in line:
+            return is_hero_line(line)
+        for verb in ("bets", "calls", "raises", "checks", "all-in"):
+            if verb in line:
+                return True
+        return False
+
+    # 依 *** STREET *** 分段
     parts = re.split(r"\n\s*\*\*\* (HOLE CARDS|FLOP|TURN|RIVER|SHOWDOWN|SUMMARY) \*\*\*\s*\n?", hand_content)
-    # parts[0] = 開頭（手牌 ID、桌況、ante、blind 等），之後交替：街道名、該段內容
-    intro = (parts[0] or "").strip()
     segments = []
     for i in range(1, len(parts) - 1, 2):
         if i + 1 < len(parts):
@@ -2472,48 +2512,43 @@ def render_hand_history_timeline(hand_content, hero_name="Hero"):
             body = (parts[i + 1] or "").strip()
             segments.append((street_name, body))
 
-    hero_escaped = re.escape(hero_name)
-    hero_pattern = re.compile(r"^(" + hero_escaped + r":.*)$", re.MULTILINE)
-
-    # CSS 已注入至頁首全域 style，此處只輸出 HTML 結構
-    timeline_html = ['<div class="hand-timeline">']
-
-    if intro:
-        intro_safe = html.escape(intro)
-        timeline_html.append(f'<div class="hand-timeline-intro">{intro_safe}</div>')
+    out = ['<div class="hand-chat-container">']
 
     for street_name, body in segments:
-        timeline_html.append(f'<div class="hand-timeline-section">')
-        timeline_html.append(f'<div class="hand-timeline-street">*** {street_name} ***</div>')
+        # SHOWDOWN / SUMMARY 不輸出動作行
+        if street_name in ("SHOWDOWN", "SUMMARY"):
+            continue
 
-        # 公牌：該段第一行若為 [Xx Yy Zz] 或 [Xx Yy Zz] [Ww] 等，拆成多張 badge
-        lines = body.split("\n")
-        first_line = lines[0].strip() if lines else ""
-        board_cards = re.findall(r"\[([A-Za-z0-9\s]+)\]", first_line)
-        if board_cards and street_name in ("FLOP", "TURN", "RIVER"):
-            timeline_html.append('<div class="hand-timeline-board">')
-            for bracket in board_cards:
-                for card in bracket.split():
-                    if re.match(r"^[AKQJT2-9][hdcs]$", card, re.IGNORECASE):
-                        timeline_html.append(_card_badge(card))
-            timeline_html.append("</div>")
-            start_idx = 1
-        else:
-            start_idx = 0
+        lines = [ln.strip() for ln in body.split("\n") if ln.strip()]
+        first_line = lines[0] if lines else ""
+        start_idx = 0
 
+        # FLOP / TURN / RIVER：置中街道 badge（公牌）
+        if street_name in ("FLOP", "TURN", "RIVER"):
+            board_cards = re.findall(r"\[([A-Za-z0-9\s]+)\]", first_line)
+            if board_cards:
+                out.append('<div class="hand-chat-street-badge">')
+                out.append(f'<div class="street-label">*** {street_name} ***</div>')
+                out.append('<div class="street-cards">')
+                for bracket in board_cards:
+                    for card in bracket.split():
+                        if re.match(r"^[AKQJT2-9][hdcs]$", card, re.IGNORECASE):
+                            out.append(_card_badge_chat(card))
+                out.append("</div></div>")
+                start_idx = 1
+
+        # 只輸出通過過濾的動作行
         for line in lines[start_idx:]:
-            line = line.strip()
-            if not line:
+            if should_ignore_line(line) or not is_active_action(line):
                 continue
+            # 顯示為「名字: 動作」；可選：把牌面代碼換成 badge（此處保持簡短文字）
             line_safe = html.escape(line)
-            is_hero = bool(hero_pattern.match(line))
-            cls = "hand-timeline-line hero" if is_hero else "hand-timeline-line"
-            timeline_html.append(f'<div class="{cls}">{line_safe}</div>')
+            is_hero = is_hero_line(line)
+            bubble_cls = "hand-chat-bubble chat-right" if is_hero else "hand-chat-bubble chat-left"
+            out.append(f'<div class="{bubble_cls}">{line_safe}</div>')
 
-        timeline_html.append("</div>")
-
-    timeline_html.append("</div>")
-    st.markdown("".join(timeline_html), unsafe_allow_html=True)
+    out.append("</div>")
+    st.markdown("".join(out), unsafe_allow_html=True)
 
 
 def calculate_position(hero_seat, button_seat, total_seats):
