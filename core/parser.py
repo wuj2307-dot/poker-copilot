@@ -1,5 +1,10 @@
 """
 [搬運工] 負責解析 PokerStars/GG 格式的手牌文字。
+所有依賴 re 正則表達式的手牌解析函數皆在此模組：
+- parse_hands(content) : 解析整份紀錄，回傳 (手牌列表, hero 名稱)
+- load_content(uploaded_file) : 讀取上傳檔案內容
+- cards_to_emoji, calculate_position, distance_to_button : 輔助解析
+- render_hand_history_timeline : 將單手 log 轉成聊天風格 UI
 """
 import re
 import html

@@ -1,5 +1,6 @@
 """
 [教練大腦] 負責跟 LLM 溝通、處理 Prompt。
+包含：call_llm_api、analyze_specific_hand、generate_match_summary。
 """
 import json
 import requests
@@ -13,6 +14,27 @@ if not _STRATEGY_FILE.exists():
     _STRATEGY_FILE = Path(__file__).resolve().parent.parent / "poker_strategy_bible"
 
 
+def call_llm_api(api_key: str, model: str, prompt: str, temperature: float = 0.1) -> str:
+    """
+    呼叫 Gemini API，傳入 prompt，回傳模型輸出的文字。
+    失敗時回傳錯誤訊息字串（供 UI 顯示）。
+    """
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {"temperature": temperature},
+    }
+    try:
+        resp = requests.post(
+            url,
+            headers={"Content-Type": "application/json"},
+            data=json.dumps(payload),
+        )
+        return resp.json()["candidates"][0]["content"]["parts"][0]["text"]
+    except Exception as e:
+        return f"AI 連線失敗: {str(e)}"
+
+
 def _load_strategy_logic():
     try:
         return _STRATEGY_FILE.read_text(encoding="utf-8")
@@ -21,7 +43,6 @@ def _load_strategy_logic():
 
 
 def generate_match_summary(hands_data, vpip, pfr, api_key, model):
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
     total_hands = len(hands_data)
     vpip_count = sum(1 for h in hands_data if h.get("vpip"))
     pfr_count = sum(1 for h in hands_data if h.get("pfr"))
@@ -106,15 +127,7 @@ def generate_match_summary(hands_data, vpip, pfr, api_key, model):
 ## 💡 下場比賽調整
 給出 1～2 個具體可執行的建議。"""
 
-    payload = {
-        "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {"temperature": 0.1}
-    }
-    try:
-        resp = requests.post(url, headers={'Content-Type': 'application/json'}, data=json.dumps(payload))
-        return resp.json()['candidates'][0]['content']['parts'][0]['text']
-    except Exception:
-        return "AI 連線失敗，請檢查 API Key 或稍後再試。"
+    return call_llm_api(api_key, model, prompt, temperature=0.1)
 
 
 def analyze_specific_hand(hand_data, api_key, model):
@@ -122,7 +135,6 @@ def analyze_specific_hand(hand_data, api_key, model):
     傳入完整 hand_data；花色與位置由系統事實強制注入，AI 無解釋權。
     """
     strategy_logic = _load_strategy_logic()
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
     hero_cards_emoji = hand_data.get("hero_cards_emoji") or cards_to_emoji(hand_data.get("hero_cards"))
     hero_position = hand_data.get("position", "Other")
     bb_count = hand_data.get("bb", 0)
@@ -221,13 +233,4 @@ GTO 在這裡是非常明確的：面對早位強勢加注，JTo 這種雜色牌
 2. ===SPLIT===
 3. **Markdown 分析**：(包含「🧐 局勢解讀」與「💡 教練建議」兩個區塊，請用口語化解釋 EV 與範圍，不要機械式背誦定律)
 """
-    payload = {
-        "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {"temperature": 0.1}
-    }
-    try:
-        resp = requests.post(url, headers={'Content-Type': 'application/json'}, data=json.dumps(payload))
-        raw_text = resp.json()['candidates'][0]['content']['parts'][0]['text']
-        return raw_text
-    except Exception as e:
-        return f"分析失敗: {str(e)}"
+    return call_llm_api(api_key, model, prompt, temperature=0.1)

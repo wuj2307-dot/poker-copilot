@@ -2,6 +2,7 @@ import streamlit as st
 import random
 import pandas as pd
 
+# 解析手牌 → core.parser；LLM 教練與 call_llm_api → core.coach
 from core import (
     load_content,
     cards_to_emoji,
@@ -2659,115 +2660,118 @@ else:
             leak_hands.sort(key=lambda h: h.get("total_pot", 0) or h.get("pot_size", 0), reverse=True)
             leak_hands = leak_hands[:3]
 
-            # --- 分頁顯示 (合併為 2 個分頁) ---
-            tab1, tab2 = st.tabs(["📊 賽事儀表板", "🔍 手牌深度覆盤"])
+            # --- v2.0 雙欄佈局：左欄 Dashboard/手牌/分析，右欄 AI 教練 ---
+            col1, col2 = st.columns([2, 1])
 
-            with tab1:
-                # --- 關鍵失誤偵測 (置頂) ---
-                st.markdown("### ⚠️ 關鍵失誤偵測 (Smart Leak Detector)")
-                st.caption("系統自動標記了 3 手你輸掉的最大底池，建議優先檢討這些「傷口」。")
+            with col1:
+                tab1, tab2 = st.tabs(["📊 賽事儀表板", "🔍 手牌深度覆盤"])
 
-                if leak_hands:
-                    cols = st.columns(3)
-                    for i, hand in enumerate(leak_hands):
-                        with cols[i]:
-                            with st.container(border=True, key=f"leak_card_{i}"):
-                                pot_val = hand.get("total_pot") or hand.get("pot_size", 0)
-                                st.markdown(f"#### 💸 Pot: {pot_val:,}")
-                                pos = hand.get("position", "Other")
-                                cards = hand.get("hero_cards_emoji") or cards_to_emoji(hand.get("hero_cards"))
-                                st.text(f"📍 {pos} | {cards}")
+                with tab1:
+                    # --- 關鍵失誤偵測 (置頂) ---
+                    st.markdown("### ⚠️ 關鍵失誤偵測 (Smart Leak Detector)")
+                    st.caption("系統自動標記了 3 手你輸掉的最大底池，建議優先檢討這些「傷口」。")
 
-                                btn_key = f"leak_analyze_{hand.get('display_index')}_{hand.get('id', i)}"
-                                if st.button("⚡️ 深度戰術解析", key=btn_key, type="primary", use_container_width=True):
-                                    with st.spinner("AI 教練正在重看這手牌..."):
-                                        analysis = analyze_specific_hand(hand, api_key, selected_model)
-                                        st.success("分析完成！")
-                                        parts = analysis.split("===SPLIT===")
-                                        summary_text = parts[0].strip() if parts else ""
-                                        detail_text = parts[1].strip() if len(parts) > 1 else ""
-                                        with st.expander("查看教練狠評", expanded=True):
-                                            if summary_text:
-                                                st.info(summary_text, icon="🦁")
-                                            if detail_text:
-                                                st.markdown(detail_text)
-                                            elif not summary_text:
-                                                st.markdown(analysis)
-                else:
-                    st.info("恭喜！這場比賽你似乎沒有輸掉什麼大底池 (或者資料不足)。")
+                    if leak_hands:
+                        cols = st.columns(3)
+                        for i, hand in enumerate(leak_hands):
+                            with cols[i]:
+                                with st.container(border=True, key=f"leak_card_{i}"):
+                                    pot_val = hand.get("total_pot") or hand.get("pot_size", 0)
+                                    st.markdown(f"#### 💸 Pot: {pot_val:,}")
+                                    pos = hand.get("position", "Other")
+                                    cards = hand.get("hero_cards_emoji") or cards_to_emoji(hand.get("hero_cards"))
+                                    st.text(f"📍 {pos} | {cards}")
 
-                st.divider()
+                                    btn_key = f"leak_analyze_{hand.get('display_index')}_{hand.get('id', i)}"
+                                    if st.button("⚡️ 深度戰術解析", key=btn_key, type="primary", use_container_width=True):
+                                        with st.spinner("AI 教練正在重看這手牌..."):
+                                            analysis = analyze_specific_hand(hand, api_key, selected_model)
+                                            st.success("分析完成！")
+                                            parts = analysis.split("===SPLIT===")
+                                            summary_text = parts[0].strip() if parts else ""
+                                            detail_text = parts[1].strip() if len(parts) > 1 else ""
+                                            with st.expander("查看教練狠評", expanded=True):
+                                                if summary_text:
+                                                    st.info(summary_text, icon="🦁")
+                                                if detail_text:
+                                                    st.markdown(detail_text)
+                                                elif not summary_text:
+                                                    st.markdown(analysis)
+                    else:
+                        st.info("恭喜！這場比賽你似乎沒有輸掉什麼大底池 (或者資料不足)。")
 
-                # 數據卡片區塊 (Bento Grid)
-                st.markdown("### 📊 關鍵數據")
-                c1, c2, c3, c4 = st.columns(4)
-                with c1:
-                    with st.container(border=True, key="key_stat_0"):
-                        st.metric("總手牌數", total_hands)
-                with c2:
-                    with st.container(border=True, key="key_stat_1"):
-                        st.metric("VPIP", f"{vpip}%")
-                with c3:
-                    with st.container(border=True, key="key_stat_2"):
-                        st.metric("PFR", f"{pfr}%")
-                with c4:
-                    with st.container(border=True, key="key_stat_3"):
-                        st.metric("Hero ID", hero_name if hero_name else "Unknown")
-                
-                # 分隔線
-                st.divider()
-                
-                # AI 賽事總結區塊 (原 Tab 2 內容)
-                st.markdown("### 🧠 AI 賽事總結")
-                if st.button("生成 AI 賽事總結", key="summary_btn"):
-                    with st.spinner("AI 思考中..."):
-                        advice = generate_match_summary(hands, vpip, pfr, api_key, selected_model)
-                        st.markdown(advice)
+                    st.divider()
 
-            with tab2:
-                # 手牌覆盤區塊 (優化版)
-                st.markdown("### 🔍 手牌覆盤")
-                col_list, col_detail = st.columns([1, 2])
-                
-                with col_list:
-                    # 進階篩選區：多重條件取交集
-                    with st.expander("🔍 進階手牌篩選 (點擊展開)", expanded=True):
-                        filter_option = st.selectbox(
-                            "主要篩選",
-                            ["全部", "💥 VPIP", "🏆 獲勝", "💸 落敗", "🔥 大底池 (>20BB)"],
-                            index=0,
-                            key="hand_filter"
-                        )
-                        if filter_option == "全部":
-                            base_hands = hands
-                        elif filter_option == "💥 VPIP":
-                            base_hands = [h for h in hands if h.get("vpip")]
-                        elif filter_option == "🏆 獲勝":
-                            base_hands = [h for h in hands if h.get("result") == "win"]
-                        elif filter_option == "💸 落敗":
-                            base_hands = [h for h in hands if h.get("result") == "loss"]
-                        else:
-                            bb_size_default = 1
-                            base_hands = [h for h in hands if (h.get("bb_size") or bb_size_default) and (h.get("pot_size", 0) > 20 * (h.get("bb_size") or bb_size_default))]
-                        
-                        card_type_options = ["對子 (Pair)", "Ax 牌型", "人頭大牌 (Broadway)"]
-                        selected_card_types = st.multiselect("牌型篩選", card_type_options, default=[], key="card_type_filter")
-                        position_options = ["BTN", "SB", "BB", "UTG", "MP", "CO"]
-                        selected_positions = st.multiselect("位置篩選", position_options, default=[], key="position_filter")
-                        
-                        filtered_hands = base_hands
-                        if selected_card_types:
-                            def match_card_type(h):
-                                if "對子 (Pair)" in selected_card_types and h.get("is_pair"):
-                                    return True
-                                if "Ax 牌型" in selected_card_types and h.get("is_ax"):
-                                    return True
-                                if "人頭大牌 (Broadway)" in selected_card_types and h.get("is_broadway"):
-                                    return True
-                                return False
-                            filtered_hands = [h for h in filtered_hands if match_card_type(h)]
-                        if selected_positions:
-                            filtered_hands = [h for h in filtered_hands if h.get("position_name") in selected_positions]
+                    # 數據卡片區塊 (Bento Grid)
+                    st.markdown("### 📊 關鍵數據")
+                    c1, c2, c3, c4 = st.columns(4)
+                    with c1:
+                        with st.container(border=True, key="key_stat_0"):
+                            st.metric("總手牌數", total_hands)
+                    with c2:
+                        with st.container(border=True, key="key_stat_1"):
+                            st.metric("VPIP", f"{vpip}%")
+                    with c3:
+                        with st.container(border=True, key="key_stat_2"):
+                            st.metric("PFR", f"{pfr}%")
+                    with c4:
+                        with st.container(border=True, key="key_stat_3"):
+                            st.metric("Hero ID", hero_name if hero_name else "Unknown")
+                    
+                    # 分隔線
+                    st.divider()
+                    
+                    # AI 賽事總結區塊 (原 Tab 2 內容)
+                    st.markdown("### 🧠 AI 賽事總結")
+                    if st.button("生成 AI 賽事總結", key="summary_btn"):
+                        with st.spinner("AI 思考中..."):
+                            advice = generate_match_summary(hands, vpip, pfr, api_key, selected_model)
+                            st.markdown(advice)
+
+                with tab2:
+                    # 手牌覆盤區塊 (優化版)
+                    st.markdown("### 🔍 手牌覆盤")
+                    col_list, col_detail = st.columns([1, 2])
+                    
+                    with col_list:
+                        # 進階篩選區：多重條件取交集
+                        with st.expander("🔍 進階手牌篩選 (點擊展開)", expanded=True):
+                            filter_option = st.selectbox(
+                                "主要篩選",
+                                ["全部", "💥 VPIP", "🏆 獲勝", "💸 落敗", "🔥 大底池 (>20BB)"],
+                                index=0,
+                                key="hand_filter"
+                            )
+                            if filter_option == "全部":
+                                base_hands = hands
+                            elif filter_option == "💥 VPIP":
+                                base_hands = [h for h in hands if h.get("vpip")]
+                            elif filter_option == "🏆 獲勝":
+                                base_hands = [h for h in hands if h.get("result") == "win"]
+                            elif filter_option == "💸 落敗":
+                                base_hands = [h for h in hands if h.get("result") == "loss"]
+                            else:
+                                bb_size_default = 1
+                                base_hands = [h for h in hands if (h.get("bb_size") or bb_size_default) and (h.get("pot_size", 0) > 20 * (h.get("bb_size") or bb_size_default))]
+                            
+                            card_type_options = ["對子 (Pair)", "Ax 牌型", "人頭大牌 (Broadway)"]
+                            selected_card_types = st.multiselect("牌型篩選", card_type_options, default=[], key="card_type_filter")
+                            position_options = ["BTN", "SB", "BB", "UTG", "MP", "CO"]
+                            selected_positions = st.multiselect("位置篩選", position_options, default=[], key="position_filter")
+                            
+                            filtered_hands = base_hands
+                            if selected_card_types:
+                                def match_card_type(h):
+                                    if "對子 (Pair)" in selected_card_types and h.get("is_pair"):
+                                        return True
+                                    if "Ax 牌型" in selected_card_types and h.get("is_ax"):
+                                        return True
+                                    if "人頭大牌 (Broadway)" in selected_card_types and h.get("is_broadway"):
+                                        return True
+                                    return False
+                                filtered_hands = [h for h in filtered_hands if match_card_type(h)]
+                            if selected_positions:
+                                filtered_hands = [h for h in filtered_hands if h.get("position_name") in selected_positions]
                     
                     if not filtered_hands:
                         st.info("此分類無手牌")
@@ -2802,34 +2806,49 @@ else:
                             hand_data = filtered_hands[selected_rows[0]]
                         else:
                             hand_data = filtered_hands[0]
-                
-                with col_detail:
-                    # --- 手牌紀錄時間軸 (取代原始文字) ---
-                    st.markdown("### 📜 手牌紀錄")
-                    render_hand_history_timeline(
-                        hand_data.get("content", ""),
-                        hero_name=hand_data.get("hero", "Hero"),
-                    )
-                    st.markdown("---")
-                    # --- AI 分析區塊 ---
-                    st.markdown("### 🤖 AI 教練分析")
-                    sys_position = hand_data.get("position", "Other")
-                    sys_cards = hand_data.get("hero_cards_emoji") or cards_to_emoji(hand_data.get("hero_cards"))
-                    st.caption(f"📍 **系統判定**：位置 {sys_position} | 手牌 {sys_cards}")
-                    analyze_clicked = st.button(f"立即分析這手牌", key="analyze_btn", use_container_width=True)
+                    
+                    with col_detail:
+                        # --- 手牌紀錄時間軸 (取代原始文字) ---
+                        st.markdown("### 📜 手牌紀錄")
+                        render_hand_history_timeline(
+                            hand_data.get("content", ""),
+                            hero_name=hand_data.get("hero", "Hero"),
+                        )
+                        st.markdown("---")
+                        # --- AI 分析區塊 ---
+                        st.markdown("### 🤖 AI 教練分析")
+                        sys_position = hand_data.get("position", "Other")
+                        sys_cards = hand_data.get("hero_cards_emoji") or cards_to_emoji(hand_data.get("hero_cards"))
+                        st.caption(f"📍 **系統判定**：位置 {sys_position} | 手牌 {sys_cards}")
+                        analyze_clicked = st.button(f"立即分析這手牌", key="analyze_btn", use_container_width=True)
 
-                    # --- 執行分析 ---
-                    if analyze_clicked:
-                        with st.spinner(random.choice(LOADING_TEXTS)):
-                            analysis = analyze_specific_hand(hand_data, api_key, selected_model)
-                            st.markdown("### 💡 AI 分析結果")
-                            parts = analysis.split("===SPLIT===")
-                            summary_text = parts[0].strip() if parts else ""
-                            detail_text = parts[1].strip() if len(parts) > 1 else ""
-                            if summary_text and detail_text:
-                                st.info(summary_text, icon="🦁")
-                                st.markdown(detail_text)
-                            else:
-                                st.markdown(analysis)
-                    else:
-                        st.info("👆 點擊上方按鈕，查看教練建議")
+                        # --- 執行分析 ---
+                        if analyze_clicked:
+                            with st.spinner(random.choice(LOADING_TEXTS)):
+                                analysis = analyze_specific_hand(hand_data, api_key, selected_model)
+                                st.markdown("### 💡 AI 分析結果")
+                                parts = analysis.split("===SPLIT===")
+                                summary_text = parts[0].strip() if parts else ""
+                                detail_text = parts[1].strip() if len(parts) > 1 else ""
+                                if summary_text and detail_text:
+                                    st.info(summary_text, icon="🦁")
+                                    st.markdown(detail_text)
+                                else:
+                                    st.markdown(analysis)
+                            # v2.0：分析完成後可針對此手牌追問，右欄建立討論上下文
+                            if st.button("💬 針對此分析追問", key="followup_btn", use_container_width=True):
+                                st.session_state["discussion_display_index"] = hand_data.get("display_index")
+                                st.session_state["discussion_hand_id"] = hand_data.get("id", "")
+                                st.rerun()
+                        else:
+                            st.info("👆 點擊上方按鈕，查看教練建議")
+
+            # --- 右欄：AI 教練 (v2.0) ---
+            with col2:
+                st.subheader("AI 教練")
+                if st.session_state.get("discussion_display_index") is not None:
+                    disp_idx = st.session_state.get("discussion_display_index")
+                    hand_id = st.session_state.get("discussion_hand_id", "?")
+                    st.info(f"正在討論 Hand #{disp_idx} ({hand_id})", icon="💬")
+                else:
+                    st.caption("暫無對話。在左欄分析手牌後可點「針對此分析追問」建立上下文。")
