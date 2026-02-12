@@ -2822,20 +2822,55 @@ else:
                         st.caption(f"📍 **系統判定**：位置 {sys_position} | 手牌 {sys_cards}")
                         analyze_clicked = st.button(f"立即分析這手牌", key="analyze_btn", use_container_width=True)
 
-                        # --- 執行分析 ---
+                        # --- 執行分析（或還原已儲存的分析）---
+                        # 若目前選中的手牌正是「討論中」的手牌，且曾有分析結果，則從 session 還原顯示
+                        is_discussion_hand = (
+                            st.session_state.get("discussion_display_index") is not None
+                            and hand_data.get("display_index") == st.session_state.get("discussion_display_index")
+                        )
+                        has_saved_analysis = (
+                            is_discussion_hand
+                            and (st.session_state.get("last_analysis_summary") or st.session_state.get("last_analysis_full"))
+                        )
+
                         if analyze_clicked:
                             with st.spinner(random.choice(LOADING_TEXTS)):
                                 analysis = analyze_specific_hand(hand_data, api_key, selected_model)
-                                st.markdown("### 💡 AI 分析結果")
                                 parts = analysis.split("===SPLIT===")
                                 summary_text = parts[0].strip() if parts else ""
                                 detail_text = parts[1].strip() if len(parts) > 1 else ""
-                                if summary_text and detail_text:
-                                    st.info(summary_text, icon="🦁")
-                                    st.markdown(detail_text)
-                                else:
-                                    st.markdown(analysis)
+                                # 存進 session，方便追問後 rerun 仍可顯示
+                                st.session_state["last_analysis_display_index"] = hand_data.get("display_index")
+                                st.session_state["last_analysis_hand_id"] = hand_data.get("id", "")
+                                st.session_state["last_analysis_summary"] = summary_text
+                                st.session_state["last_analysis_detail"] = detail_text
+                                st.session_state["last_analysis_full"] = analysis
+                            st.markdown("### 💡 AI 分析結果")
+                            _summary = st.session_state.get("last_analysis_summary", "")
+                            _detail = st.session_state.get("last_analysis_detail", "")
+                            _full = st.session_state.get("last_analysis_full", "")
+                            if _summary and _detail:
+                                st.info(_summary, icon="🦁")
+                                st.markdown(_detail)
+                            else:
+                                st.markdown(_full or analysis)
                             # v2.0：分析完成後可針對此手牌追問，右欄建立討論上下文
+                            if st.button("💬 針對此分析追問", key="followup_btn", use_container_width=True):
+                                st.session_state["discussion_display_index"] = hand_data.get("display_index")
+                                st.session_state["discussion_hand_id"] = hand_data.get("id", "")
+                                st.rerun()
+                        elif has_saved_analysis:
+                            # 已點過「追問」，左欄仍顯示該手牌的分析，不消失
+                            st.markdown("### 💡 AI 分析結果")
+                            _summary = st.session_state.get("last_analysis_summary", "")
+                            _detail = st.session_state.get("last_analysis_detail", "")
+                            _full = st.session_state.get("last_analysis_full", "")
+                            if _summary and _detail:
+                                st.info(_summary, icon="🦁")
+                                st.markdown(_detail)
+                            else:
+                                st.markdown(_full)
+                            st.caption("💬 右側「AI 教練」已鎖定此手牌，可在右欄輸入追問。")
                             if st.button("💬 針對此分析追問", key="followup_btn", use_container_width=True):
                                 st.session_state["discussion_display_index"] = hand_data.get("display_index")
                                 st.session_state["discussion_hand_id"] = hand_data.get("id", "")
@@ -2849,6 +2884,23 @@ else:
                 if st.session_state.get("discussion_display_index") is not None:
                     disp_idx = st.session_state.get("discussion_display_index")
                     hand_id = st.session_state.get("discussion_hand_id", "?")
-                    st.info(f"正在討論 Hand #{disp_idx} ({hand_id})", icon="💬")
+                    st.info(f"**正在討論 Hand #{disp_idx}**\n\n手牌 ID：`{hand_id}`\n\n可在下方輸入追問，教練會依此手牌與分析內容回覆。", icon="💬")
+                    st.markdown("---")
+                    coach_query = st.text_area(
+                        "輸入追問",
+                        key="coach_followup_input",
+                        placeholder="例如：這手牌在 flop 如果 check-raise 會不會更好？",
+                        height=120,
+                        help="針對左欄顯示的該手牌分析內容，輸入你想問教練的問題。",
+                    )
+                    if st.button("送出追問", key="coach_send_btn", type="primary", use_container_width=True):
+                        if coach_query.strip():
+                            st.session_state["coach_last_query"] = coach_query.strip()
+                            st.success("已送出！（實際回覆功能將在下一階段接上）")
+                            st.rerun()
+                        else:
+                            st.warning("請先輸入問題再送出。")
                 else:
-                    st.caption("暫無對話。在左欄分析手牌後可點「針對此分析追問」建立上下文。")
+                    st.caption("暫無對話。在左欄完成「立即分析這手牌」後，點「💬 針對此分析追問」，即可在此輸入追問。")
+                    st.markdown("---")
+                    st.caption("操作步驟：上傳手牌 → 選手牌 → 點「立即分析這手牌」→ 點「針對此分析追問」→ 在此輸入問題。")
