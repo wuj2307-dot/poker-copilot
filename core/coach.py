@@ -35,6 +35,68 @@ def call_llm_api(api_key: str, model: str, prompt: str, temperature: float = 0.1
         return f"AI 連線失敗: {str(e)}"
 
 
+def _call_llm_chat(
+    api_key: str,
+    model: str,
+    contents: list,
+    system_instruction: str | None = None,
+    temperature: float = 0.1,
+) -> str:
+    """
+    呼叫 Gemini API 多輪對話。contents 為 [{"role": "user"|"model", "parts": [{"text": "..."}]}, ...]。
+    若有 system_instruction 則作為系統指示（手牌脈絡）。
+    """
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+    payload = {
+        "contents": contents,
+        "generationConfig": {"temperature": temperature},
+    }
+    if system_instruction:
+        payload["systemInstruction"] = {"parts": [{"text": system_instruction}]}
+    try:
+        resp = requests.post(
+            url,
+            headers={"Content-Type": "application/json"},
+            data=json.dumps(payload),
+        )
+        data = resp.json()
+        if "candidates" not in data or not data["candidates"]:
+            return "AI 未回傳內容，請再試一次。"
+        return data["candidates"][0]["content"]["parts"][0]["text"]
+    except Exception as e:
+        return f"AI 連線失敗: {str(e)}"
+
+
+def chat_with_coach(history, user_input, hand_context, api_key, model):
+    """
+    根據「手牌脈絡」+「對話歷史」+「使用者輸入」呼叫 Gemini，回傳教練回覆文字。
+
+    - history: list of {"role": "user"|"assistant", "content": "..."}（Streamlit 慣例）
+    - user_input: 使用者本輪輸入
+    - hand_context: 當前鎖定手牌的紀錄與分析摘要（字串），會作為 system instruction
+    - api_key, model: Gemini API 參數
+    """
+    system_instruction = (
+        "你是 Poker Copilot 撲克教練。你正在針對「當前鎖定的一手牌」回答用戶的追問。"
+        "以下手牌紀錄與分析是你與用戶共同看到的上下文，請嚴格依此回答，勿臆測其他手牌。\n\n"
+        "【手牌與分析上下文】\n"
+        f"{hand_context}"
+    )
+    # 將 Streamlit 的 user/assistant 轉成 Gemini 的 user/model，且只保留 parts
+    role_map = {"user": "user", "assistant": "model"}
+    contents = []
+    for msg in history:
+        role = role_map.get(msg.get("role"), "user")
+        text = msg.get("content", "")
+        if not text.strip():
+            continue
+        contents.append({"role": role, "parts": [{"text": text}]})
+    contents.append({"role": "user", "parts": [{"text": user_input}]})
+    return _call_llm_chat(
+        api_key, model, contents, system_instruction=system_instruction, temperature=0.2
+    )
+
+
 def _load_strategy_logic():
     try:
         return _STRATEGY_FILE.read_text(encoding="utf-8")

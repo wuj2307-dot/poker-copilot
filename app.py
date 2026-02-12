@@ -10,6 +10,7 @@ from core import (
     render_hand_history_timeline,
     generate_match_summary,
     analyze_specific_hand,
+    chat_with_coach,
     get_api_key,
     set_api_key,
     get_use_demo,
@@ -2284,6 +2285,10 @@ Seat 8: cb195c66 collected (700)
 # --- 1. 頁面設定 ---
 st.set_page_config(page_title="Poker Copilot War Room", page_icon="♠️", layout="wide")
 
+# v2.1：聊天紀錄（右欄 AI 教練）
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+
 # --- CSS: Apple HIG macOS Dark Mode ---
 st.markdown("""
 <style>
@@ -2854,10 +2859,21 @@ else:
                                 st.markdown(_detail)
                             else:
                                 st.markdown(_full or analysis)
-                            # v2.0：分析完成後可針對此手牌追問，右欄建立討論上下文
+                            # v2.1：追問時寫入手牌脈絡並加入一則 context 訊息
                             if st.button("💬 針對此分析追問", key="followup_btn", use_container_width=True):
                                 st.session_state["discussion_display_index"] = hand_data.get("display_index")
                                 st.session_state["discussion_hand_id"] = hand_data.get("id", "")
+                                _sum = st.session_state.get("last_analysis_summary", "")
+                                _det = st.session_state.get("last_analysis_detail", "")
+                                _ful = st.session_state.get("last_analysis_full", "")
+                                ctx_text = (hand_data.get("content") or "") + "\n\n【分析摘要】\n" + (
+                                    (_sum + "\n\n" + _det) if (_sum and _det) else (_ful or "")
+                                )
+                                st.session_state["coach_hand_context"] = ctx_text
+                                st.session_state.messages.append({
+                                    "role": "assistant",
+                                    "content": f"我已鎖定 **Hand #{hand_data.get('display_index')}** (ID: `{hand_data.get('id', '')}`)。請在下方輸入你的追問。",
+                                })
                                 st.rerun()
                         elif has_saved_analysis:
                             # 已點過「追問」，左欄仍顯示該手牌的分析，不消失
@@ -2874,33 +2890,53 @@ else:
                             if st.button("💬 針對此分析追問", key="followup_btn", use_container_width=True):
                                 st.session_state["discussion_display_index"] = hand_data.get("display_index")
                                 st.session_state["discussion_hand_id"] = hand_data.get("id", "")
+                                _sum = st.session_state.get("last_analysis_summary", "")
+                                _det = st.session_state.get("last_analysis_detail", "")
+                                _ful = st.session_state.get("last_analysis_full", "")
+                                ctx_text = (hand_data.get("content") or "") + "\n\n【分析摘要】\n" + (
+                                    (_sum + "\n\n" + _det) if (_sum and _det) else (_ful or "")
+                                )
+                                st.session_state["coach_hand_context"] = ctx_text
+                                st.session_state.messages.append({
+                                    "role": "assistant",
+                                    "content": f"我已鎖定 **Hand #{hand_data.get('display_index')}** (ID: `{hand_data.get('id', '')}`)。請在下方輸入你的追問。",
+                                })
                                 st.rerun()
                         else:
                             st.info("👆 點擊上方按鈕，查看教練建議")
 
-            # --- 右欄：AI 教練 (v2.0) ---
+            # --- 右欄：AI 教練 (v2.1 聊天) ---
             with col2:
                 st.subheader("AI 教練")
                 if st.session_state.get("discussion_display_index") is not None:
                     disp_idx = st.session_state.get("discussion_display_index")
                     hand_id = st.session_state.get("discussion_hand_id", "?")
-                    st.info(f"**正在討論 Hand #{disp_idx}**\n\n手牌 ID：`{hand_id}`\n\n可在下方輸入追問，教練會依此手牌與分析內容回覆。", icon="💬")
-                    st.markdown("---")
-                    coach_query = st.text_area(
-                        "輸入追問",
-                        key="coach_followup_input",
-                        placeholder="例如：這手牌在 flop 如果 check-raise 會不會更好？",
-                        height=120,
-                        help="針對左欄顯示的該手牌分析內容，輸入你想問教練的問題。",
-                    )
-                    if st.button("送出追問", key="coach_send_btn", type="primary", use_container_width=True):
-                        if coach_query.strip():
-                            st.session_state["coach_last_query"] = coach_query.strip()
-                            st.success("已送出！（實際回覆功能將在下一階段接上）")
-                            st.rerun()
-                        else:
-                            st.warning("請先輸入問題再送出。")
-                else:
-                    st.caption("暫無對話。在左欄完成「立即分析這手牌」後，點「💬 針對此分析追問」，即可在此輸入追問。")
-                    st.markdown("---")
-                    st.caption("操作步驟：上傳手牌 → 選手牌 → 點「立即分析這手牌」→ 點「針對此分析追問」→ 在此輸入問題。")
+                    st.info(f"**正在討論 Hand #{disp_idx}** (ID: `{hand_id}`)", icon="💬")
+                # 顯示對話歷史
+                for msg in st.session_state.messages:
+                    with st.chat_message(msg["role"]):
+                        st.markdown(msg["content"])
+                # 底部輸入：有鎖定手牌時才可送追問（需有 coach_hand_context）
+                chat_input_placeholder = "有什麼想問教練的嗎？"
+                if st.session_state.get("discussion_display_index") is None:
+                    chat_input_placeholder = "請先在左欄點「針對此分析追問」鎖定手牌後再輸入。"
+                if prompt := st.chat_input(chat_input_placeholder):
+                    if st.session_state.get("discussion_display_index") is None:
+                        st.warning("請先在左欄完成分析並點「💬 針對此分析追問」鎖定手牌。")
+                    else:
+                        st.session_state.messages.append({"role": "user", "content": prompt})
+                        hand_ctx = st.session_state.get("coach_hand_context", "")
+                        with st.chat_message("assistant"):
+                            with st.spinner("教練思考中…"):
+                                reply = chat_with_coach(
+                                    st.session_state.messages[:-1],
+                                    prompt,
+                                    hand_ctx,
+                                    api_key,
+                                    selected_model,
+                                )
+                            st.markdown(reply)
+                        st.session_state.messages.append({"role": "assistant", "content": reply})
+                        st.rerun()
+                if not st.session_state.messages and st.session_state.get("discussion_display_index") is None:
+                    st.caption("在左欄完成「立即分析這手牌」後，點「💬 針對此分析追問」，即可在此與教練對話。")
